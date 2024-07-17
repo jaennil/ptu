@@ -1,4 +1,7 @@
-use std::{io::{self}, process::Command};
+use std::{
+    io::{self},
+    process::Command,
+};
 
 use ratatui::{
     buffer::Buffer,
@@ -51,15 +54,13 @@ impl App {
     fn handle_key_event(&mut self, key_event: KeyEvent) {
         match key_event.code {
             KeyCode::Esc => self.exit(),
+            KeyCode::Backspace => {
+                self.search.pop();
+                self.output = search(&self.search);
+            }
             KeyCode::Char(value) => {
                 self.search.push(value);
-                let output = Command::new("pacman")
-                    .arg("-Ss")
-                    .arg(&self.search)
-                    .output()
-                    .expect("failed to execute process");
-                let s = std::str::from_utf8(&output.stdout).unwrap().to_string();
-                self.output = s;
+                self.output = search(&self.search);
             }
             _ => {}
         }
@@ -68,6 +69,15 @@ impl App {
     fn exit(&mut self) {
         self.exit = true;
     }
+}
+
+fn search(package: &str) -> String {
+    let output = Command::new("pacman")
+        .arg("-Ss")
+        .arg(package)
+        .output()
+        .unwrap();
+    std::str::from_utf8(&output.stdout).unwrap().to_string()
 }
 
 impl Widget for &App {
