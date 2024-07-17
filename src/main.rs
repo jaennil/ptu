@@ -77,7 +77,7 @@ fn search(package: &str) -> String {
         .arg(package)
         .output()
         .unwrap();
-    std::str::from_utf8(&output.stdout).unwrap().to_string()
+    std::string::String::from_utf8(output.stdout).unwrap()
 }
 
 impl Widget for &App {
