@@ -1,0 +1,8 @@
+[package]
+name = "pw"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ratatui = "0.27.0"
+tui-textarea = "0.5.1"
