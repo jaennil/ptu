@@ -1,9 +1,5 @@
-use std::{
-    io::{self},
-    process::Command,
-};
+use std::io::{self};
 
-use alpm::{Alpm, SigLevel};
 use ratatui::{
     buffer::Buffer,
     crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind},
@@ -13,7 +9,10 @@ use ratatui::{
     Frame,
 };
 
+mod pacman;
 mod tui;
+
+use pacman::{Package, Pacman};
 
 fn main() -> io::Result<()> {
     let mut terminal = tui::init()?;
@@ -25,6 +24,7 @@ fn main() -> io::Result<()> {
 
 #[derive(Default)]
 struct App {
+    pacman: Pacman,
     search: String,
     packages: Vec<Package>,
     exit: bool,
@@ -58,11 +58,11 @@ impl App {
             KeyCode::Esc => self.exit(),
             KeyCode::Backspace => {
                 self.search.pop();
-                self.packages = search(&self.search);
+                self.packages = self.pacman.search(&self.search);
             }
             KeyCode::Char(value) => {
                 self.search.push(value);
-                self.packages = search(&self.search);
+                self.packages = self.pacman.search(&self.search);
             }
             _ => {}
         }
@@ -71,37 +71,6 @@ impl App {
     fn exit(&mut self) {
         self.exit = true;
     }
-}
-
-struct Package {
-    name: String,
-    description: Option<String>,
-}
-
-fn search(package: &str) -> Vec<Package> {
-    let handle = Alpm::new("/", "/var/lib/pacman").unwrap();
-
-    handle
-        .register_syncdb("core", SigLevel::USE_DEFAULT)
-        .unwrap();
-    handle
-        .register_syncdb("extra", SigLevel::USE_DEFAULT)
-        .unwrap();
-    handle
-        .register_syncdb("community", SigLevel::USE_DEFAULT)
-        .unwrap();
-
-    let mut res = Vec::new();
-    for db in handle.syncdbs() {
-        for pkg in db.search([package].iter()).unwrap() {
-            res.push(Package {
-                name: pkg.name().to_string(),
-                description: pkg.desc().map(str::to_string),
-            });
-        }
-    }
-
-    res
 }
 
 impl Widget for &App {
