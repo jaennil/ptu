@@ -3,11 +3,13 @@ use std::{
     process::Command,
 };
 
+use alpm::{Alpm, SigLevel};
 use ratatui::{
     buffer::Buffer,
     crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind},
     layout::{Constraint, Layout, Rect},
-    widgets::{Block, Paragraph, Widget},
+    style::{Color, Style, Stylize},
+    widgets::{Block, Paragraph, Row, Table, Widget},
     Frame,
 };
 
@@ -24,7 +26,7 @@ fn main() -> io::Result<()> {
 #[derive(Default)]
 struct App {
     search: String,
-    output: String,
+    packages: Vec<Package>,
     exit: bool,
 }
 
@@ -56,11 +58,11 @@ impl App {
             KeyCode::Esc => self.exit(),
             KeyCode::Backspace => {
                 self.search.pop();
-                self.output = search(&self.search);
+                self.packages = search(&self.search);
             }
             KeyCode::Char(value) => {
                 self.search.push(value);
-                self.output = search(&self.search);
+                self.packages = search(&self.search);
             }
             _ => {}
         }
@@ -71,13 +73,35 @@ impl App {
     }
 }
 
-fn search(package: &str) -> String {
-    let output = Command::new("pacman")
-        .arg("-Ss")
-        .arg(package)
-        .output()
+struct Package {
+    name: String,
+    description: Option<String>,
+}
+
+fn search(package: &str) -> Vec<Package> {
+    let handle = Alpm::new("/", "/var/lib/pacman").unwrap();
+
+    handle
+        .register_syncdb("core", SigLevel::USE_DEFAULT)
         .unwrap();
-    std::string::String::from_utf8(output.stdout).unwrap()
+    handle
+        .register_syncdb("extra", SigLevel::USE_DEFAULT)
+        .unwrap();
+    handle
+        .register_syncdb("community", SigLevel::USE_DEFAULT)
+        .unwrap();
+
+    let mut res = Vec::new();
+    for db in handle.syncdbs() {
+        for pkg in db.search([package].iter()).unwrap() {
+            res.push(Package {
+                name: pkg.name().to_string(),
+                description: pkg.desc().map(str::to_string),
+            });
+        }
+    }
+
+    res
 }
 
 impl Widget for &App {
@@ -87,7 +111,21 @@ impl Widget for &App {
         let search = Paragraph::new(self.search.clone()).block(Block::bordered());
         search.render(layout[0], buf);
 
-        let output = Paragraph::new(self.output.clone()).block(Block::bordered());
+        let mut rows = Vec::new();
+        for package in &self.packages {
+            rows.push(Row::new(vec![
+                package.name.clone(),
+                package.description.clone().unwrap_or("".to_string()),
+            ]));
+        }
+        let widths = [Constraint::Percentage(25), Constraint::Percentage(65)];
+        let header = Row::new(["name", "description"])
+            .style(Style::new().bold().fg(Color::Magenta))
+            .bottom_margin(1);
+        let output = Table::new(rows, widths)
+            .header(header)
+            .block(Block::bordered())
+            .highlight_symbol(">>");
         output.render(layout[1], buf);
     }
 }
