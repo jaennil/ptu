@@ -12,7 +12,7 @@ use crate::theme::Theme;
 pub struct PackagesTable {
     // TODO
     // widget: Table<'a>,
-    state: TableState,
+    pub state: TableState,
     pub packages: Vec<Package>,
     theme: Theme,
     pub active: bool,
@@ -79,9 +79,8 @@ impl PackagesTable {
             ]));
         }
         let widths = [Constraint::Percentage(25), Constraint::Percentage(65)];
-        let header = Row::new(["name", "description"])
-            .style(Style::new().bold().fg(Color::Magenta))
-            .bottom_margin(1);
+        let header =
+            Row::new(["name", "description"]).style(Style::new().bold().fg(Color::Magenta));
         let border_color = if self.active {
             self.theme.active
         } else {
@@ -90,8 +89,7 @@ impl PackagesTable {
         let output = Table::new(rows, widths)
             .header(header)
             .block(Block::bordered().border_style(Style::default().fg(border_color)))
-            .highlight_style(Style::new().add_modifier(Modifier::REVERSED))
-            .highlight_symbol(">>");
+            .highlight_style(Style::new().add_modifier(Modifier::REVERSED));
         frame.render_stateful_widget(output, area, &mut self.state);
     }
 }

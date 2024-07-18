@@ -1,7 +1,11 @@
-use std::io::{self};
+use std::io::{self, stdout};
 
 use ratatui::{
-    crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers},
+    crossterm::{
+        event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers},
+        terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+        ExecutableCommand,
+    },
     layout::{Constraint, Layout},
     Frame,
 };
@@ -41,10 +45,10 @@ struct App {
 }
 
 impl App {
-    fn run(&mut self, terminal: &mut tui::Tui) -> io::Result<()> {
+    fn run(&mut self, terminal: &mut tui::Terminal) -> io::Result<()> {
         while !self.exit {
             terminal.draw(|frame| self.render_frame(frame))?;
-            self.handle_events()?;
+            self.handle_events(terminal)?;
         }
         Ok(())
     }
@@ -56,18 +60,18 @@ impl App {
         self.table.render(frame, layout[1]);
     }
 
-    fn handle_events(&mut self) -> io::Result<()> {
+    fn handle_events(&mut self, terminal: &mut tui::Terminal) -> io::Result<()> {
         match event::read()? {
             // TODO: move key event kind check inside handle_key_event
             Event::Key(key_event) if key_event.kind == KeyEventKind::Press => {
-                self.handle_key_event(key_event)
+                self.handle_key_event(key_event, terminal)
             }
             _ => {}
         };
         Ok(())
     }
 
-    fn handle_key_event(&mut self, key_event: KeyEvent) {
+    fn handle_key_event(&mut self, key_event: KeyEvent, terminal: &mut tui::Terminal) {
         if key_event.modifiers == KeyModifiers::CONTROL && key_event.code == KeyCode::Char('j') {
             self.mode = Mode::Table;
             self.table.active = true;
@@ -91,7 +95,7 @@ impl App {
                 match key_event.code {
                     KeyCode::Backspace => {
                         self.table.packages = self.pacman.search(&self.search.text);
-                        self.table.reset()
+                        self.table.reset();
                     }
                     KeyCode::Char(_) => {
                         self.table.packages = self.pacman.search(&self.search.text);
@@ -100,7 +104,27 @@ impl App {
                     _ => {}
                 }
             }
-            Mode::Table => self.table.handle_key_event(key_event),
+            Mode::Table => {
+                self.table.handle_key_event(key_event);
+                match key_event.code {
+                    KeyCode::Char('i') => {
+                        stdout().execute(LeaveAlternateScreen).unwrap();
+                        disable_raw_mode().unwrap();
+                        pacman::install(
+                            &self
+                                .table
+                                .packages
+                                .get(self.table.state.selected().unwrap())
+                                .unwrap()
+                                .name,
+                        );
+                        stdout().execute(EnterAlternateScreen).unwrap();
+                        enable_raw_mode().unwrap();
+                        terminal.clear().unwrap();
+                    }
+                    _ => {}
+                }
+            }
         }
     }
 

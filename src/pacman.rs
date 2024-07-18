@@ -1,5 +1,8 @@
+use std::process::Command;
+
 use alpm::{Alpm, SigLevel};
 
+// TODO: replace with alpm package
 pub struct Package {
     pub name: String,
     pub description: Option<String>,
@@ -45,4 +48,12 @@ impl Pacman {
 
         res
     }
+}
+
+pub fn install(package_name: &str) {
+    Command::new("sudo")
+        .arg("pacman")
+        .arg("-S")
+        .arg(package_name)
+        .status().unwrap();
 }
