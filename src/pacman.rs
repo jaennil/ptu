@@ -1,6 +1,5 @@
 use alpm::{Alpm, SigLevel};
 
-// TODO: use alpm package
 pub struct Package {
     pub name: String,
     pub description: Option<String>,
