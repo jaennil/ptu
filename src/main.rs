@@ -93,16 +93,15 @@ impl App {
     fn handle_key_event(&mut self, key_event: KeyEvent) {
         if key_event.modifiers == KeyModifiers::CONTROL && key_event.code == KeyCode::Char('j') {
             self.mode = Mode::Table;
-        } else if key_event.modifiers == KeyModifiers::CONTROL
-            && key_event.code == KeyCode::Char('j')
-        {
-            self.mode = Mode::Table;
+            return;
         } else if key_event.modifiers == KeyModifiers::CONTROL
             && key_event.code == KeyCode::Char('k')
         {
             self.mode = Mode::Search;
+            return;
         } else if key_event.code == KeyCode::Esc {
             self.exit();
+            return;
         }
 
         match self.mode {
@@ -115,6 +114,7 @@ impl App {
                 KeyCode::Char(value) => {
                     self.search.push(value);
                     self.packages = self.pacman.search(&self.search);
+                    self.table_state.select(Some(0));
                 }
                 _ => {}
             },
