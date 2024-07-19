@@ -246,7 +246,6 @@ version = "0.1.0"
 dependencies = [
  "alpm",
  "ratatui",
- "tui-textarea",
 ]
 
 [[package]]
@@ -389,17 +388,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "unicode-ident",
-]
-
-[[package]]
-name = "tui-textarea"
-version = "0.5.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4a13589ef83273780b53a0e0be49282cb5d9cc10727b6c580e8f11366ccb460c"
-dependencies = [
- "crossterm",
- "ratatui",
- "unicode-width",
 ]
 
 [[package]]

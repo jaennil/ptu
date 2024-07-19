@@ -6,4 +6,3 @@ edition = "2021"
 [dependencies]
 alpm = "3.0.5"
 ratatui = "0.27.0"
-tui-textarea = "0.5.1"
