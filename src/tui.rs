@@ -2,26 +2,21 @@ use std::io::Stdout;
 use std::ops::DerefMut;
 use std::{io, ops::Deref};
 
-use ratatui::{
-    backend::CrosstermBackend,
-    crossterm::{terminal, ExecutableCommand as _},
-};
+use ratatui::backend::CrosstermBackend;
+use ratatui::crossterm::{terminal, ExecutableCommand as _};
 
 type Terminal = ratatui::Terminal<CrosstermBackend<Stdout>>;
 
 pub struct TUI {
     terminal: Terminal,
-    // pub ui: UI,
     raw_mode: bool,
     alternate_screen: bool,
 }
 
 impl TUI {
     pub fn new(terminal: Terminal) -> Self {
-        // let ui = UI::new();
         Self {
             terminal,
-            // ui,
             raw_mode: false,
             alternate_screen: false,
         }
@@ -92,10 +87,6 @@ impl TUI {
         self.init()?;
         self.terminal.clear()
     }
-
-    // pub fn draw(&mut self) -> io::Result<ratatui::CompletedFrame> {
-    //     self.terminal.draw(|frame| self.ui.render(frame))
-    // }
 }
 
 impl Deref for TUI {

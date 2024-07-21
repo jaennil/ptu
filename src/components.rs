@@ -1,3 +1,7 @@
+pub(crate) mod home;
+mod search;
+mod table;
+
 use std::io;
 
 use ratatui::layout::Rect;

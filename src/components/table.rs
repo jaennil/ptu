@@ -1,7 +1,7 @@
 use std::io::{self, stdout};
 
 use crate::{
-    component::Component,
+    components::Component,
     pacman::{self, Package, Pacman},
 };
 use ratatui::{

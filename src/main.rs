@@ -1,12 +1,8 @@
 mod app;
 mod tui;
-mod ui;
 mod theme;
-mod component;
-mod search;
-mod home;
 mod pacman;
-mod table;
+mod components;
 
 use app::App;
 use std::io;
