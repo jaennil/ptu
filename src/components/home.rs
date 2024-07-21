@@ -6,9 +6,9 @@ use ratatui::{
 
 use std::io;
 
-use crate::table::PackagesTable;
+use crate::components::table::PackagesTable;
 
-use crate::{component::Component, search::PackageSearch};
+use crate::components::{Component, search::PackageSearch};
 
 #[derive(Default)]
 pub struct HomeComponent {
@@ -22,9 +22,6 @@ impl Component for HomeComponent {
             Layout::vertical([Constraint::Length(3), Constraint::Percentage(100)]).split(area);
         self.search.draw(frame, layout[0])?;
         self.table.draw(frame, layout[1])?;
-        // let search = Paragraph::new(self.text.clone())
-        //     .block(Block::bordered().border_style(Style::default()));
-        // frame.render_widget(search, area);
         Ok(())
     }
     fn handle_key_event(&mut self, key: KeyEvent) {

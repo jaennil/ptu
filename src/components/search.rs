@@ -8,7 +8,7 @@ use ratatui::{
 
 use std::io;
 
-use crate::component::Component;
+use crate::components::Component;
 
 use crate::theme::Theme;
 

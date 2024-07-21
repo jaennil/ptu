@@ -1,14 +1,15 @@
 use ratatui::{
+    Terminal,
     backend::CrosstermBackend,
     crossterm::{
         self,
         event::{self, KeyCode, KeyEvent},
-    },
-    Terminal,
+    }
 };
 
-use crate::component::Component;
-use crate::{home::HomeComponent, tui::TUI};
+use crate::components::Component;
+use crate::components::home::HomeComponent;
+use crate::tui::TUI;
 use std::io;
 
 pub struct App {
