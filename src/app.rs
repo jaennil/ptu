@@ -10,7 +10,7 @@ use ratatui::{
 use crate::components::Component;
 use crate::components::home::HomeComponent;
 use crate::tui::TUI;
-use std::io;
+use std::{io, time};
 
 pub struct App {
     tui: TUI,
@@ -73,10 +73,12 @@ impl App {
     }
 
     fn handle_events(&mut self) -> io::Result<()> {
-        match event::read()? {
-            crossterm::event::Event::Key(key_event) => self.handle_key_event(key_event),
-            _ => {}
-        };
+        if event::poll(time::Duration::from_millis(16))? {
+            match event::read()? {
+                crossterm::event::Event::Key(key_event) => self.handle_key_event(key_event),
+                _ => {}
+            };
+        }
         Ok(())
     }
     fn handle_key_event(&mut self, key_event: KeyEvent) {
