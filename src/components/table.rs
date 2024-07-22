@@ -100,7 +100,10 @@ impl Component for PackagesTable {
                     modifiers: KeyModifiers::NONE,
                     code,
                     ..
-                } => match code {
+                } => {
+                    // tODO: remain on the same package if it exists
+                    self.reset();
+                    match code {
                     KeyCode::Char(c) => {
                         self.package.push(c);
                     }
@@ -108,6 +111,7 @@ impl Component for PackagesTable {
                         self.package.pop();
                     }
                     _ => {}
+                }
                 },
                 _ => {}
             }
