@@ -3,75 +3,34 @@ use std::ops::DerefMut;
 use std::{io, ops::Deref};
 
 use ratatui::backend::CrosstermBackend;
+use ratatui::crossterm::terminal::{EnterAlternateScreen, LeaveAlternateScreen};
 use ratatui::crossterm::{terminal, ExecutableCommand as _};
 
 type Terminal = ratatui::Terminal<CrosstermBackend<Stdout>>;
 
 pub struct TUI {
     terminal: Terminal,
-    raw_mode: bool,
-    alternate_screen: bool,
 }
 
 impl TUI {
-    pub fn new(terminal: Terminal) -> Self {
-        Self {
-            terminal,
-            raw_mode: false,
-            alternate_screen: false,
-        }
-    }
+    pub fn new() -> io::Result<Self> {
+        let writer = io::stdout();
+        let backend = CrosstermBackend::new(writer);
+        let terminal = Terminal::new(backend)?;
 
-    pub fn enable_raw_mode(&mut self) -> io::Result<()> {
-        terminal::enable_raw_mode()?;
-        self.raw_mode = true;
-        Ok(())
-    }
-
-    pub fn disable_raw_mode(&mut self) -> io::Result<()> {
-        terminal::disable_raw_mode()?;
-        self.raw_mode = false;
-        Ok(())
-    }
-
-    pub fn enter_alternate_screen(&mut self) -> io::Result<()> {
-        self.terminal
-            .backend_mut()
-            .execute(terminal::EnterAlternateScreen)?;
-        self.alternate_screen = true;
-        Ok(())
-    }
-
-    pub fn leave_alternate_screen(&mut self) -> io::Result<()> {
-        self.terminal
-            .backend_mut()
-            .execute(terminal::LeaveAlternateScreen)?;
-        self.alternate_screen = false;
-        Ok(())
-    }
-
-    pub fn with_alternate_screen(mut self) -> io::Result<Self> {
-        self.enter_alternate_screen()?;
-        Ok(self)
-    }
-
-    pub fn with_raw_mode(mut self) -> io::Result<Self> {
-        self.enable_raw_mode()?;
-        Ok(self)
+        Ok(Self { terminal })
     }
 
     pub fn init(&mut self) -> io::Result<()> {
-        self.enable_raw_mode()?;
-        self.enter_alternate_screen()
+        terminal::enable_raw_mode()?;
+        self.terminal.backend_mut().execute(EnterAlternateScreen)?;
+        Ok(())
     }
 
     pub fn restore(&mut self) -> io::Result<()> {
-        if self.raw_mode {
-            self.disable_raw_mode()?;
-        }
-
-        if self.alternate_screen {
-            self.leave_alternate_screen()?;
+        if terminal::is_raw_mode_enabled()? {
+            terminal::disable_raw_mode()?;
+            self.terminal.backend_mut().execute(LeaveAlternateScreen)?;
         }
 
         Ok(())
@@ -83,7 +42,6 @@ impl TUI {
     {
         self.restore()?;
         f();
-        // TODO: enable only previously enabled features
         self.init()?;
         self.terminal.clear()
     }
