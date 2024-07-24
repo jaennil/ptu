@@ -10,13 +10,13 @@ use ratatui::{
 use crate::tui::TUI;
 use crate::{action::Action, components::home::HomeComponent};
 use crate::{components::Component, pacman};
+
 use std::{io, time};
 
 pub struct App {
     tui: TUI,
-    exit: bool,
     components: Vec<Box<dyn Component>>,
-    // pacman: Pacman,
+    exit: bool,
 }
 
 impl App {
@@ -27,6 +27,7 @@ impl App {
         let tui = TUI::new(terminal)
             .with_raw_mode()?
             .with_alternate_screen()?;
+
         Ok(Self {
             tui,
             components: vec![Box::new(HomeComponent::default())],
@@ -37,7 +38,8 @@ impl App {
     pub fn run(&mut self) -> io::Result<()> {
         while !self.exit {
             self.render()?;
-            self.handle_events()?;
+            let actions = self.handle_events()?;
+            self.handle_actions(actions);
         }
         self.tui.restore()
     }
@@ -54,28 +56,40 @@ impl App {
         Ok(())
     }
 
-    fn handle_events(&mut self) -> io::Result<()> {
+    fn handle_events(&mut self) -> io::Result<Vec<Option<Action>>> {
+        let mut actions = Vec::new();
+
         if event::poll(time::Duration::from_millis(16))? {
             match event::read()? {
-                crossterm::event::Event::Key(key_event) => self.handle_key_event(key_event),
+                crossterm::event::Event::Key(key_event) => {
+                    let mut components_actions = self.handle_key_event(key_event);
+                    actions.append(&mut components_actions);
+                }
                 _ => {}
             };
         }
-        Ok(())
+
+        Ok(actions)
     }
 
-    fn handle_key_event(&mut self, key_event: KeyEvent) {
+    fn handle_key_event(&mut self, key_event: KeyEvent) -> Vec<Option<Action>> {
+        let mut actions = Vec::new();
+
         if key_event.code == KeyCode::Esc {
             self.exit();
-            return;
+            return actions;
         }
 
-        let mut components_actions = Vec::new();
         for component in self.components.iter_mut() {
-            let mut actions = component.handle_key_event(key_event).unwrap();
-            components_actions.append(&mut actions);
+            let mut component_actions = component.handle_key_event(key_event).unwrap();
+            actions.append(&mut component_actions);
         }
-        for action in components_actions {
+
+        actions
+    }
+
+    fn handle_actions(&mut self, actions: Vec<Option<Action>>) {
+        for action in actions {
             if let Some(action) = action {
                 self.handle_action(action);
             }
