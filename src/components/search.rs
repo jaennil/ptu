@@ -8,7 +8,7 @@ use ratatui::{
 
 use std::io;
 
-use crate::components::Component;
+use crate::{action::Action, components::Component};
 
 use crate::theme::Theme;
 
@@ -41,9 +41,10 @@ impl Component for PackageSearch {
         Ok(())
     }
 
-    fn handle_key_event(&mut self, key: KeyEvent) {
+    fn handle_key_event(&mut self, key: KeyEvent) -> io::Result<Vec<Option<Action>>> {
+        let actions = Vec::new();
         if !self.active {
-            return;
+            return Ok(actions);
         }
 
         match key {
@@ -65,5 +66,6 @@ impl Component for PackageSearch {
             }
             _ => {}
         };
+        Ok(actions)
     }
 }

@@ -6,9 +6,9 @@ use ratatui::{
 
 use std::io;
 
-use crate::components::table::PackagesTable;
+use crate::{action::Action, components::table::PackagesTable};
 
-use crate::components::{Component, search::PackageSearch};
+use crate::components::{search::PackageSearch, Component};
 
 #[derive(Default)]
 pub struct HomeComponent {
@@ -24,7 +24,10 @@ impl Component for HomeComponent {
         self.table.draw(frame, layout[1])?;
         Ok(())
     }
-    fn handle_key_event(&mut self, key: KeyEvent) {
+
+    fn handle_key_event(&mut self, key: KeyEvent) -> io::Result<Vec<Option<Action>>> {
+        let mut actions = Vec::new();
+
         match key {
             KeyEvent {
                 modifiers: KeyModifiers::CONTROL,
@@ -37,13 +40,19 @@ impl Component for HomeComponent {
                 }
                 KeyCode::Char('k') => {
                     self.search.active = true;
-                    self.table.active = false
+                    self.table.active = false;
                 }
                 _ => {}
             },
             _ => {}
         }
-        self.search.handle_key_event(key);
-        self.table.handle_key_event(key);
+
+        let mut search_actions = self.search.handle_key_event(key)?;
+        let mut table_actions = self.table.handle_key_event(key)?;
+
+        actions.append(&mut search_actions);
+        actions.append(&mut table_actions);
+
+        Ok(actions)
     }
 }

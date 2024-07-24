@@ -8,6 +8,12 @@ pub struct Package {
     pub description: Option<String>,
 }
 
+impl Package {
+    pub fn name(&self) -> &str {
+        return &self.name;
+    }
+}
+
 pub struct Pacman {
     handle: Alpm,
 }
@@ -55,5 +61,6 @@ pub fn install(package_name: &str) {
         .arg("pacman")
         .arg("-S")
         .arg(package_name)
-        .status().unwrap();
+        .status()
+        .unwrap();
 }
