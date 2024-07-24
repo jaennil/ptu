@@ -1,15 +1,12 @@
-use std::io::{self, stdout};
+use std::io::{self};
 
 use crate::{
+    action::Action,
     components::Component,
-    pacman::{self, Package, Pacman},
+    pacman::{Package, Pacman},
 };
 use ratatui::{
-    crossterm::{
-        event::{KeyCode, KeyEvent, KeyModifiers},
-        terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
-        ExecutableCommand as _,
-    },
+    crossterm::event::{KeyCode, KeyEvent, KeyModifiers},
     layout::{Constraint, Rect},
     style::{Color, Modifier, Style, Stylize as _},
     widgets::{Block, Row, Table, TableState},
@@ -19,13 +16,14 @@ use ratatui::{
 use crate::theme::Theme;
 
 pub struct PackagesTable {
-    // TODO
+    // TODO:
     // widget: Table<'a>,
     pacman: Pacman,
     pub state: TableState,
     pub packages: Vec<Package>,
     theme: Theme,
     pub active: bool,
+    // TODO: dont store package here instead handle it through search event
     package: String,
 }
 
@@ -76,24 +74,11 @@ impl PackagesTable {
     pub fn reset(&mut self) {
         self.state.select(Some(0));
     }
-
-    fn install_package(&self) {
-        stdout().execute(LeaveAlternateScreen).unwrap();
-        disable_raw_mode().unwrap();
-        pacman::install(
-            &self
-                .packages
-                .get(self.state.selected().unwrap())
-                .unwrap()
-                .name,
-        );
-        stdout().execute(EnterAlternateScreen).unwrap();
-        enable_raw_mode().unwrap();
-    }
 }
 
 impl Component for PackagesTable {
-    fn handle_key_event(&mut self, event: KeyEvent) {
+    fn handle_key_event(&mut self, event: KeyEvent) -> io::Result<Vec<Option<Action>>> {
+        let mut actions = Vec::new();
         if !self.active {
             match event {
                 KeyEvent {
@@ -101,23 +86,22 @@ impl Component for PackagesTable {
                     code,
                     ..
                 } => {
-                    // tODO: remain on the same package if it exists
+                    // TODO: remain on the same package if it exists
                     self.reset();
                     match code {
-                    KeyCode::Char(c) => {
-                        self.package.push(c);
+                        KeyCode::Char(c) => {
+                            self.package.push(c);
+                        }
+                        KeyCode::Backspace => {
+                            self.package.pop();
+                        }
+                        _ => {}
                     }
-                    KeyCode::Backspace => {
-                        self.package.pop();
-                    }
-                    _ => {}
                 }
-                },
                 _ => {}
             }
-
             self.packages = self.pacman.search(&self.package);
-            return;
+            return Ok(actions);
         }
 
         match event {
@@ -128,11 +112,17 @@ impl Component for PackagesTable {
             } => match code {
                 KeyCode::Char('j') => self.next(),
                 KeyCode::Char('k') => self.previous(),
-                KeyCode::Char('i') => self.install_package(),
+                KeyCode::Char('i') => {
+                    let i = self.state.selected().unwrap();
+                    let package_name = self.packages.get(i).unwrap().name();
+                    actions.push(Some(Action::InstallPackage(package_name.to_string())));
+                }
                 _ => {}
             },
             _ => {}
         }
+
+        Ok(actions)
     }
 
     fn draw(&mut self, frame: &mut Frame, area: Rect) -> io::Result<()> {

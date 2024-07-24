@@ -1,39 +1,24 @@
 use ratatui::{
-    Terminal,
     backend::CrosstermBackend,
     crossterm::{
         self,
         event::{self, KeyCode, KeyEvent},
-    }
+    },
+    Terminal,
 };
 
-use crate::components::Component;
-use crate::components::home::HomeComponent;
 use crate::tui::TUI;
+use crate::{action::Action, components::home::HomeComponent};
+use crate::{components::Component, pacman};
 use std::{io, time};
 
 pub struct App {
     tui: TUI,
     exit: bool,
-    // events: Vec<Event>,
     components: Vec<Box<dyn Component>>,
     // pacman: Pacman,
-    // package_input: PackageSearch,
-    // packages_table: PackagesTable,
-    // mode: Mode,
 }
-//
-// enum Event {
-//     Key(KeyEvent),
-// }
 
-// #[derive(Default)]
-// enum Mode {
-//     #[default]
-//     SearchPackage,
-//     NavigatePackages,
-// }
-//
 impl App {
     pub fn new() -> io::Result<Self> {
         let writer = io::stdout();
@@ -46,9 +31,6 @@ impl App {
             tui,
             components: vec![Box::new(HomeComponent::default())],
             exit: Default::default(),
-            // events: Default::default(),
-            // mode: Mode::default(),
-            // exit: false,
         })
     }
 
@@ -81,14 +63,34 @@ impl App {
         }
         Ok(())
     }
+
     fn handle_key_event(&mut self, key_event: KeyEvent) {
         if key_event.code == KeyCode::Esc {
             self.exit();
             return;
         }
-        // self.events.push(Event::Key(key_event));
+
+        let mut components_actions = Vec::new();
         for component in self.components.iter_mut() {
-            component.handle_key_event(key_event);
+            let mut actions = component.handle_key_event(key_event).unwrap();
+            components_actions.append(&mut actions);
+        }
+        for action in components_actions {
+            if let Some(action) = action {
+                self.handle_action(action);
+            }
+        }
+    }
+
+    fn handle_action(&mut self, action: Action) {
+        match action {
+            Action::InstallPackage(name) => {
+                self.tui
+                    .suspend(|| {
+                        pacman::install(&name);
+                    })
+                    .unwrap();
+            }
         }
     }
 
@@ -96,79 +98,3 @@ impl App {
         self.exit = true;
     }
 }
-
-// match key_event {
-//     KeyEvent {
-//         kind: KeyEventKind::Press,
-//         code,
-//         modifiers,
-//         ..
-//     } => {
-//
-//         match modifiers {
-//         KeyModifiers::CONTROL => match code {
-//             // KeyCode::Char('j') => self.set_mode(Mode::NavigatePackages),
-//             // KeyCode::Char('k') => self.set_mode(Mode::SearchPackage),
-//             _ => {}
-//         },
-//         KeyModifiers::NONE => match code {
-//             KeyCode::Esc => self.exit(),
-//             _ => match self.mode {
-//                         Mode::SearchPackage => {
-//                             self.package_input.handle_key_event(key_event);
-//                             match code {
-//                                 KeyCode::Backspace | KeyCode::Char(_) => {
-//                                     self.packages_table.packages =
-//                                         self.pacman.search(&self.package_input.text);
-//                                     self.packages_table.reset();
-//                                 }
-//                                 _ => {}
-//                             }
-//                         }
-//                         Mode::NavigatePackages => {
-//                             self.packages_table.handle_key_event(key_event);
-//                             match code {
-//                                 KeyCode::Char('i') => {
-//                                     self.tui.suspend(|| {
-//                                         pacman::install(
-//                                             &self
-//                                                 .packages_table
-//                                                 .packages
-//                                                 .get(self.packages_table.state.selected().unwrap())
-//                                                 .unwrap()
-//                                                 .name,
-//                                         );
-//                                     });
-//                                 }
-//                                 _ => {}
-//                             }
-//                         }
-//                     },
-//         },
-//         _ => {}
-//     },
-//     }
-//     _ => {}
-// }
-//
-//
-//
-//
-// }
-//
-// // impl App {
-// //     fn set_mode(&mut self, mode: Mode) {
-// //         match mode {
-// //             Mode::SearchPackage => {
-// //                 self.mode = Mode::SearchPackage;
-// //                 self.package_input.active = true;
-// //                 self.packages_table.active = false;
-// //             }
-// //             Mode::NavigatePackages => {
-// //                 self.mode = Mode::NavigatePackages;
-// //                 self.packages_table.active = true;
-// //                 self.package_input.active = false;
-// //             }
-// //         }
-// //     }
-// // }
