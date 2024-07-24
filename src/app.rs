@@ -1,10 +1,6 @@
-use ratatui::{
-    backend::CrosstermBackend,
-    crossterm::{
-        self,
-        event::{self, KeyCode, KeyEvent},
-    },
-    Terminal,
+use ratatui::crossterm::{
+    self,
+    event::{self, KeyCode, KeyEvent},
 };
 
 use crate::tui::TUI;
@@ -21,12 +17,8 @@ pub struct App {
 
 impl App {
     pub fn new() -> io::Result<Self> {
-        let writer = io::stdout();
-        let backend = CrosstermBackend::new(writer);
-        let terminal = Terminal::new(backend)?;
-        let tui = TUI::new(terminal)
-            .with_raw_mode()?
-            .with_alternate_screen()?;
+        let mut tui = TUI::new()?;
+        tui.init()?;
 
         Ok(Self {
             tui,
