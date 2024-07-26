@@ -14,17 +14,45 @@ use crate::components::{search::PackageSearch, Component};
 pub struct HomeComponent {
     search: PackageSearch,
     table: PackagesTable,
+    focus: Focus,
+}
+
+#[derive(Default, PartialEq)]
+enum Focus {
+    #[default]
+    Search,
+    Table,
+}
+
+impl HomeComponent {
+    fn set_focus(&mut self, item: Focus) {
+        if self.focus == item {
+            return;
+        }
+
+        match item {
+            Focus::Search => {
+                self.search.active = true;
+                self.table.active = false;
+            }
+            Focus::Table => {
+                self.table.active = true;
+                self.search.active = false;
+            }
+        }
+
+        self.focus = item;
+    }
+
+    fn toggle_focus(&mut self) {
+        match self.focus {
+            Focus::Search => self.set_focus(Focus::Table),
+            Focus::Table => self.set_focus(Focus::Search),
+        }
+    }
 }
 
 impl Component for HomeComponent {
-    fn draw(&mut self, frame: &mut Frame, area: Rect) -> io::Result<()> {
-        let layout =
-            Layout::vertical([Constraint::Length(3), Constraint::Percentage(100)]).split(area);
-        self.search.draw(frame, layout[0])?;
-        self.table.draw(frame, layout[1])?;
-        Ok(())
-    }
-
     fn handle_key_event(&mut self, key: KeyEvent) -> io::Result<Vec<Option<Action>>> {
         let mut actions = Vec::new();
 
@@ -34,17 +62,15 @@ impl Component for HomeComponent {
                 code,
                 ..
             } => match code {
-                KeyCode::Char('j') => {
-                    self.table.active = true;
-                    self.search.active = false;
-                }
-                KeyCode::Char('k') => {
-                    self.search.active = true;
-                    self.table.active = false;
-                }
+                KeyCode::Char('j') => self.set_focus(Focus::Table),
+                KeyCode::Char('k') => self.set_focus(Focus::Search),
                 _ => {}
             },
-            _ => {}
+
+            KeyEvent { code, .. } => match code {
+                KeyCode::Tab => self.toggle_focus(),
+                _ => {}
+            },
         }
 
         let mut search_actions = self.search.handle_key_event(key)?;
@@ -54,5 +80,13 @@ impl Component for HomeComponent {
         actions.append(&mut table_actions);
 
         Ok(actions)
+    }
+
+    fn draw(&mut self, frame: &mut Frame, area: Rect) -> io::Result<()> {
+        let layout =
+            Layout::vertical([Constraint::Length(3), Constraint::Percentage(100)]).split(area);
+        self.search.draw(frame, layout[0])?;
+        self.table.draw(frame, layout[1])?;
+        Ok(())
     }
 }

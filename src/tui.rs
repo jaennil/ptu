@@ -16,7 +16,7 @@ impl TUI {
     pub fn new() -> io::Result<Self> {
         let writer = io::stdout();
         let backend = CrosstermBackend::new(writer);
-        let terminal = Terminal::new(backend)?;
+        let terminal = ratatui::Terminal::new(backend)?;
 
         Ok(Self { terminal })
     }
