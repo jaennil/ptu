@@ -7,7 +7,7 @@ use crate::tui::TUI;
 use crate::{action::Action, components::home::HomeComponent};
 use crate::{components::Component, pacman};
 
-use std::{io, time};
+use std::io;
 
 pub struct App {
     tui: TUI,
@@ -51,15 +51,13 @@ impl App {
     fn handle_events(&mut self) -> io::Result<Vec<Option<Action>>> {
         let mut actions = Vec::new();
 
-        if event::poll(time::Duration::from_millis(16))? {
-            match event::read()? {
-                crossterm::event::Event::Key(key_event) => {
-                    let mut components_actions = self.handle_key_event(key_event);
-                    actions.append(&mut components_actions);
-                }
-                _ => {}
-            };
-        }
+        match event::read()? {
+            crossterm::event::Event::Key(key_event) => {
+                let mut components_actions = self.handle_key_event(key_event);
+                actions.append(&mut components_actions);
+            }
+            _ => {}
+        };
 
         Ok(actions)
     }
