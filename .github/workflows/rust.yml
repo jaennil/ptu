@@ -1,0 +1,21 @@
+name: Rust-Arch-Linux
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux/archlinux:latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Install Packages
+      run: pacman -Syu rust pkgconf --noconfirm --needed
+    - name: Build
+      run: cargo build --verbose
+    - name: Run tests
+      run: cargo test --verbose
