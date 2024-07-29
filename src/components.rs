@@ -1,6 +1,6 @@
 pub(crate) mod home;
-mod search;
-mod table;
+pub(crate) mod search;
+pub(crate) mod table;
 
 use std::io;
 
@@ -20,5 +20,9 @@ pub trait Component {
         let _ = action;
     }
 
-    fn draw(&mut self, frame: &mut Frame, area: Rect) -> io::Result<()>;
+    fn draw(&mut self, frame: &mut Frame, area: Rect) -> io::Result<()> {
+        let _ = frame;
+        let _ = area;
+        Ok(())
+    }
 }
