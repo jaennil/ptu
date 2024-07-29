@@ -11,7 +11,8 @@ use std::io;
 
 // TODO: mb try tui-term
 // TODO: mb try tui-input
-fn main() -> io::Result<()> {
+#[tokio::main]
+async fn main() -> io::Result<()> {
     errors::init();
 
     let mut app = App::new()?;
