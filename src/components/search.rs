@@ -68,13 +68,14 @@ impl Component for PackageSearch {
                 } else {
                     self.active = false;
                 }
-            },
+            }
             _ => {}
         }
     }
 
     fn draw(&mut self, frame: &mut Frame, area: Rect) -> io::Result<()> {
-        let area = Layout::vertical([Constraint::Length(3), Constraint::Percentage(100)]).split(area)[0];
+        let area =
+            Layout::vertical([Constraint::Length(3), Constraint::Percentage(100)]).split(area)[0];
         let border_color = if self.active {
             self.theme.active
         } else {

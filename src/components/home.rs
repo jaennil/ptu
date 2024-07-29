@@ -1,5 +1,4 @@
-use ratatui::
-    crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use std::io;
 
@@ -39,10 +38,10 @@ impl HomeComponent {
 
         match item {
             Focus::Search => {
-                action =  Some(Action::Focus(Focus::Search));
+                action = Some(Action::Focus(Focus::Search));
             }
             Focus::Table => {
-                action =  Some(Action::Focus(Focus::Table));
+                action = Some(Action::Focus(Focus::Table));
             }
         }
 
@@ -53,8 +52,12 @@ impl HomeComponent {
 
     fn toggle_focus(&mut self) -> Action {
         match self.focus {
-            Focus::Search => self.set_focus(Focus::Table).expect("should be impossible to get None here"),
-            Focus::Table => self.set_focus(Focus::Search).expect("should be impossible to get None here"),
+            Focus::Search => self
+                .set_focus(Focus::Table)
+                .expect("should be impossible to get None here"),
+            Focus::Table => self
+                .set_focus(Focus::Search)
+                .expect("should be impossible to get None here"),
         }
     }
 }
@@ -70,21 +73,19 @@ impl Component for HomeComponent {
                 ..
             } => match code {
                 KeyCode::Char(jk @ ('j' | 'k')) => {
-                let action = self.set_focus(Focus::from(jk));
-                if action.is_some() {
+                    let action = self.set_focus(Focus::from(jk));
+                    if action.is_some() {
                         actions.push(action.unwrap());
                     }
                 }
                 _ => {}
             },
 
-            KeyEvent { code, .. } => {
-                match code {
-                    KeyCode::Tab => {
-                        actions.push(self.toggle_focus());
-                    }
-                    _ => {}
+            KeyEvent { code, .. } => match code {
+                KeyCode::Tab => {
+                    actions.push(self.toggle_focus());
                 }
+                _ => {}
             },
         }
 

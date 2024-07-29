@@ -119,13 +119,14 @@ impl Component for PackagesTable {
                 } else {
                     self.active = false;
                 }
-            },
+            }
             _ => {}
         }
     }
 
     fn draw(&mut self, frame: &mut Frame, area: Rect) -> io::Result<()> {
-        let area = Layout::vertical([Constraint::Length(3), Constraint::Percentage(100)]).split(area)[1];
+        let area =
+            Layout::vertical([Constraint::Length(3), Constraint::Percentage(100)]).split(area)[1];
         let mut rows = Vec::new();
         for package in &self.packages {
             rows.push(Row::new(vec![

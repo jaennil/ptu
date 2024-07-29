@@ -3,8 +3,11 @@ use ratatui::crossterm::{
     event::{self, KeyCode, KeyEvent},
 };
 
+use crate::{
+    action::Action,
+    components::{home::HomeComponent, search::PackageSearch},
+};
 use crate::{components::table::PackagesTable, tui::TUI};
-use crate::{action::Action, components::{home::HomeComponent, search::PackageSearch}};
 use crate::{components::Component, pacman};
 
 use std::io;
@@ -22,7 +25,11 @@ impl App {
 
         Ok(Self {
             tui,
-            components: vec![Box::new(HomeComponent::default()), Box::new(PackageSearch::default()), Box::new(PackagesTable::default())],
+            components: vec![
+                Box::new(HomeComponent::default()),
+                Box::new(PackageSearch::default()),
+                Box::new(PackagesTable::default()),
+            ],
             exit: Default::default(),
         })
     }
