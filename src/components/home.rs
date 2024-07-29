@@ -53,7 +53,7 @@ impl HomeComponent {
 }
 
 impl Component for HomeComponent {
-    fn handle_key_event(&mut self, key: KeyEvent) -> io::Result<Vec<Option<Action>>> {
+    fn handle_key_event(&mut self, key: KeyEvent) -> io::Result<Vec<Action>> {
         let mut actions = Vec::new();
 
         match key {
@@ -80,6 +80,10 @@ impl Component for HomeComponent {
         actions.append(&mut table_actions);
 
         Ok(actions)
+    }
+
+    fn update(&mut self, action: &Action) {
+        self.table.update(action);
     }
 
     fn draw(&mut self, frame: &mut Frame, area: Rect) -> io::Result<()> {

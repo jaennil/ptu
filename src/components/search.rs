@@ -41,8 +41,9 @@ impl Component for PackageSearch {
         Ok(())
     }
 
-    fn handle_key_event(&mut self, key: KeyEvent) -> io::Result<Vec<Option<Action>>> {
-        let actions = Vec::new();
+    fn handle_key_event(&mut self, key: KeyEvent) -> io::Result<Vec<Action>> {
+        let mut actions = Vec::new();
+
         if !self.active {
             return Ok(actions);
         }
@@ -54,15 +55,15 @@ impl Component for PackageSearch {
                 ..
             } => {
                 match code {
-                    KeyCode::Char(c) => {
-                        self.text.push(c);
+                    KeyCode::Char(char) => {
+                        self.text.push(char);
                     }
                     KeyCode::Backspace => {
                         self.text.pop();
                     }
-
                     _ => {}
                 };
+                actions.push(Action::SearchPackage(self.text.clone()));
             }
             _ => {}
         };

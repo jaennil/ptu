@@ -48,7 +48,7 @@ impl App {
         Ok(())
     }
 
-    fn handle_events(&mut self) -> io::Result<Vec<Option<Action>>> {
+    fn handle_events(&mut self) -> io::Result<Vec<Action>> {
         let mut actions = Vec::new();
 
         match event::read()? {
@@ -62,7 +62,7 @@ impl App {
         Ok(actions)
     }
 
-    fn handle_key_event(&mut self, key_event: KeyEvent) -> Vec<Option<Action>> {
+    fn handle_key_event(&mut self, key_event: KeyEvent) -> Vec<Action> {
         let mut actions = Vec::new();
 
         if key_event.code == KeyCode::Esc {
@@ -78,15 +78,16 @@ impl App {
         actions
     }
 
-    fn handle_actions(&mut self, actions: Vec<Option<Action>>) {
+    fn handle_actions(&mut self, actions: Vec<Action>) {
         for action in actions {
-            if let Some(action) = action {
-                self.handle_action(action);
+            self.handle_action(&action);
+            for component in self.components.iter_mut() {
+                component.update(&action);
             }
         }
     }
 
-    fn handle_action(&mut self, action: Action) {
+    fn handle_action(&mut self, action: &Action) {
         match action {
             Action::InstallPackage(name) => {
                 self.tui
@@ -95,6 +96,7 @@ impl App {
                     })
                     .unwrap();
             }
+            _ => {}
         }
     }
 

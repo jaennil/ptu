@@ -24,7 +24,6 @@ pub struct PackagesTable {
     theme: Theme,
     pub active: bool,
     // TODO: dont store package here instead handle it through search event
-    package: String,
 }
 
 impl Default for PackagesTable {
@@ -37,7 +36,6 @@ impl Default for PackagesTable {
             packages: Default::default(),
             theme: Default::default(),
             active: Default::default(),
-            package: Default::default(),
         }
     }
 }
@@ -71,36 +69,21 @@ impl PackagesTable {
         self.state.select(Some(i));
     }
 
-    pub fn reset(&mut self) {
+    fn reset_selection(&mut self) {
         self.state.select(Some(0));
+    }
+
+    fn search_package(&mut self, package_name: &str) {
+        self.packages = self.pacman.search(package_name);
+        self.reset_selection();
     }
 }
 
 impl Component for PackagesTable {
-    fn handle_key_event(&mut self, event: KeyEvent) -> io::Result<Vec<Option<Action>>> {
+    fn handle_key_event(&mut self, event: KeyEvent) -> io::Result<Vec<Action>> {
         let mut actions = Vec::new();
+
         if !self.active {
-            match event {
-                KeyEvent {
-                    modifiers: KeyModifiers::NONE,
-                    code,
-                    ..
-                } => {
-                    // TODO: remain on the same package if it exists
-                    self.reset();
-                    match code {
-                        KeyCode::Char(c) => {
-                            self.package.push(c);
-                        }
-                        KeyCode::Backspace => {
-                            self.package.pop();
-                        }
-                        _ => {}
-                    }
-                }
-                _ => {}
-            }
-            self.packages = self.pacman.search(&self.package);
             return Ok(actions);
         }
 
@@ -115,7 +98,7 @@ impl Component for PackagesTable {
                 KeyCode::Char('i') => {
                     let i = self.state.selected().unwrap();
                     let package_name = self.packages.get(i).unwrap().name();
-                    actions.push(Some(Action::InstallPackage(package_name.to_string())));
+                    actions.push(Action::InstallPackage(package_name.to_string()));
                 }
                 _ => {}
             },
@@ -123,6 +106,13 @@ impl Component for PackagesTable {
         }
 
         Ok(actions)
+    }
+
+    fn update(&mut self, action: &Action) {
+        match action {
+            Action::SearchPackage(package_name) => self.search_package(package_name),
+            _ => {}
+        }
     }
 
     fn draw(&mut self, frame: &mut Frame, area: Rect) -> io::Result<()> {
