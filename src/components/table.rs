@@ -7,13 +7,15 @@ use crate::{
 };
 use ratatui::{
     crossterm::event::{KeyCode, KeyEvent, KeyModifiers},
-    layout::{Constraint, Rect},
+    layout::{Constraint, Layout, Rect},
     style::{Color, Modifier, Style, Stylize as _},
     widgets::{Block, Row, Table, TableState},
     Frame,
 };
 
 use crate::theme::Theme;
+
+use super::home::Focus;
 
 pub struct PackagesTable {
     // TODO:
@@ -111,11 +113,19 @@ impl Component for PackagesTable {
     fn update(&mut self, action: &Action) {
         match action {
             Action::SearchPackage(package_name) => self.search_package(package_name),
+            Action::Focus(focus) => {
+                if *focus == Focus::Table {
+                    self.active = true;
+                } else {
+                    self.active = false;
+                }
+            },
             _ => {}
         }
     }
 
     fn draw(&mut self, frame: &mut Frame, area: Rect) -> io::Result<()> {
+        let area = Layout::vertical([Constraint::Length(3), Constraint::Percentage(100)]).split(area)[1];
         let mut rows = Vec::new();
         for package in &self.packages {
             rows.push(Row::new(vec![
