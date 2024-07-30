@@ -63,7 +63,7 @@ impl HomeComponent {
 }
 
 impl Component for HomeComponent {
-    fn handle_key_event(&mut self, key: KeyEvent) -> io::Result<Vec<Action>> {
+    fn handle_key_event(&mut self, key: &KeyEvent) -> io::Result<Vec<Action>> {
         let mut actions = Vec::new();
 
         match key {
@@ -73,7 +73,7 @@ impl Component for HomeComponent {
                 ..
             } => match code {
                 KeyCode::Char(jk @ ('j' | 'k')) => {
-                    let action = self.set_focus(Focus::from(jk));
+                    let action = self.set_focus(Focus::from(*jk));
                     if action.is_some() {
                         actions.push(action.unwrap());
                     }
