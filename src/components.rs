@@ -16,13 +16,12 @@ pub trait Component {
         Ok(Vec::new())
     }
 
-    fn update(&mut self, action: &Action) {
+    fn update(&mut self, action: Action) {
         let _ = action;
     }
 
     fn draw(&mut self, frame: &mut Frame, area: Rect) -> io::Result<()> {
-        let _ = frame;
-        let _ = area;
+        let (_, _) = (frame, area);
         Ok(())
     }
 }

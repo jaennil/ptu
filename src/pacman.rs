@@ -43,17 +43,18 @@ impl Pacman {
     }
 
     pub fn search(&self, package: &str) -> Vec<Package> {
-        let mut res = Vec::new();
+        let mut packages = Vec::new();
+
         for db in self.handle.syncdbs() {
             for pkg in db.search([package].iter()).unwrap() {
-                res.push(Package {
+                packages.push(Package {
                     name: pkg.name().to_string(),
                     description: pkg.desc().map(str::to_string),
                 });
             }
         }
 
-        res
+        packages
     }
 }
 
