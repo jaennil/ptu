@@ -87,9 +87,11 @@ impl Component for PackagesTable {
                 KeyCode::Char('j') => self.next(),
                 KeyCode::Char('k') => self.previous(),
                 KeyCode::Char('i') => {
-                    let i = self.state.selected().unwrap();
-                    let package_name = self.packages.get(i).unwrap().name();
-                    actions.push(Action::InstallPackage(package_name.to_string()));
+                    if let Some(i) = self.state.selected() {
+                        if let Some(package) = self.packages.get(i) {
+                            actions.push(Action::InstallPackage(package.name().to_string()));
+                        }
+                    }
                 }
                 _ => {}
             },
@@ -123,7 +125,7 @@ impl Component for PackagesTable {
         for package in &self.packages {
             rows.push(Row::new(vec![
                 package.name.clone(),
-                package.description.clone().unwrap_or("".to_string()),
+                package.description.clone().unwrap_or("None".to_string()),
             ]));
         }
         let widths = [Constraint::Percentage(25), Constraint::Percentage(65)];

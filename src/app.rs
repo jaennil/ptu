@@ -22,6 +22,11 @@ impl App {
         let mut tui = TUI::new()?;
         tui.init()?;
 
+        let pacman = match Pacman::new() {
+            Ok(pacman) => pacman,
+            Err(error) => return Err(io::Error::new(io::ErrorKind::Other, error.to_string())),
+        };
+
         Ok(Self {
             tui,
             components: vec![
@@ -29,7 +34,7 @@ impl App {
                 Box::new(PackageSearch::default()),
                 Box::new(PackagesTable::default()),
             ],
-            pacman: Default::default(),
+            pacman,
             exit: Default::default(),
         })
     }
@@ -62,7 +67,7 @@ impl App {
 
         match event::read()? {
             Event::Key(key_event) => {
-                let mut components_actions = self.handle_key_event(&key_event);
+                let mut components_actions = self.handle_key_event(&key_event)?;
                 actions.append(&mut components_actions);
             }
             _ => {}
@@ -71,27 +76,27 @@ impl App {
         Ok(actions)
     }
 
-    fn handle_key_event(&mut self, key_event: &KeyEvent) -> Vec<Action> {
+    fn handle_key_event(&mut self, key_event: &KeyEvent) -> io::Result<Vec<Action>> {
         let mut actions = Vec::new();
 
         if key_event.code == KeyCode::Esc {
             self.exit();
-            return actions;
+            return Ok(actions);
         }
 
         for component in self.components.iter_mut() {
-            let component_actions = component.handle_key_event(key_event).unwrap();
+            let component_actions = component.handle_key_event(key_event)?;
             actions.extend(component_actions);
         }
 
-        actions
+        Ok(actions)
     }
 
-    fn handle_actions(&mut self, actions: &Vec<Action>) {
+    fn handle_actions(&mut self, actions: &Vec<Action>) -> io::Result<()> {
         let mut app_actions = actions.clone();
 
         for action in actions {
-            let new_actions = self.handle_action(&action);
+            let new_actions = self.handle_action(&action)?;
             app_actions.extend(new_actions);
         }
 
@@ -100,19 +105,17 @@ impl App {
                 component.update(action);
             }
         }
+
+        Ok(())
     }
 
-    fn handle_action(&mut self, action: &Action) -> Vec<Action> {
+    fn handle_action(&mut self, action: &Action) -> io::Result<Vec<Action>> {
         let mut actions = Vec::new();
 
         match action {
-            Action::InstallPackage(name) => {
-                self.tui
-                    .suspend(|| {
-                        pacman::install(name);
-                    })
-                    .unwrap();
-            }
+            Action::InstallPackage(name) => self.tui.suspend(|| {
+                pacman::install(name).unwrap();
+            })?,
             Action::SearchPackage(package_name) => {
                 let packages = self.pacman.search(package_name);
                 actions.push(Action::FoundPackages(packages));
@@ -120,7 +123,7 @@ impl App {
             _ => {}
         }
 
-        actions
+        Ok(actions)
     }
 
     fn exit(&mut self) {
