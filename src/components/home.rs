@@ -74,8 +74,8 @@ impl Component for HomeComponent {
             } => match code {
                 KeyCode::Char(jk @ ('j' | 'k')) => {
                     let action = self.set_focus(Focus::from(*jk));
-                    if action.is_some() {
-                        actions.push(action.unwrap());
+                    if let Some(action) = action {
+                        actions.push(action);
                     }
                 }
                 _ => {}

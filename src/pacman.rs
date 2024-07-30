@@ -1,4 +1,4 @@
-use std::process::Command;
+use std::{io, process::Command};
 
 use alpm::{Alpm, SigLevel};
 
@@ -19,27 +19,21 @@ pub struct Pacman {
     handle: Alpm,
 }
 
-impl Default for Pacman {
-    fn default() -> Self {
-        Pacman::new()
-    }
-}
+//impl Default for Pacman {
+//    fn default() -> io::Self {
+//        Pacman::new()
+//    }
+//}
 
 impl Pacman {
-    pub fn new() -> Pacman {
-        let handle = Alpm::new("/", "/var/lib/pacman").unwrap();
+    pub fn new() -> alpm::Result<Self> {
+        let handle = Alpm::new("/", "/var/lib/pacman")?;
 
-        handle
-            .register_syncdb("core", SigLevel::USE_DEFAULT)
-            .unwrap();
-        handle
-            .register_syncdb("extra", SigLevel::USE_DEFAULT)
-            .unwrap();
-        handle
-            .register_syncdb("community", SigLevel::USE_DEFAULT)
-            .unwrap();
+        handle.register_syncdb("core", SigLevel::USE_DEFAULT)?;
+        handle.register_syncdb("extra", SigLevel::USE_DEFAULT)?;
+        handle.register_syncdb("community", SigLevel::USE_DEFAULT)?;
 
-        Pacman { handle }
+        Ok(Pacman { handle })
     }
 
     pub fn search(&self, package: &str) -> Vec<Package> {
@@ -58,11 +52,11 @@ impl Pacman {
     }
 }
 
-pub fn install(package_name: &str) {
+pub fn install(package_name: &str) -> io::Result<()> {
     Command::new("sudo")
         .arg("pacman")
         .arg("-S")
         .arg(package_name)
-        .status()
-        .unwrap();
+        .status()?;
+    Ok(())
 }
