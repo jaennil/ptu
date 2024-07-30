@@ -1,10 +1,6 @@
 use std::io::{self};
 
-use crate::{
-    action::Action,
-    components::Component,
-    pacman::{Package, Pacman},
-};
+use crate::{action::Action, components::Component, pacman::Package};
 use ratatui::{
     crossterm::event::{KeyCode, KeyEvent, KeyModifiers},
     layout::{Constraint, Layout, Rect},
@@ -20,7 +16,6 @@ use super::home::Focus;
 pub struct PackagesTable {
     // TODO:
     // widget: Table<'a>,
-    pacman: Pacman,
     pub state: TableState,
     pub packages: Vec<Package>,
     theme: Theme,
@@ -34,7 +29,6 @@ impl Default for PackagesTable {
             // TODO: accept event that table is now active and remove this with selected stuff
             // in the event call select if any packages
             state: TableState::default().with_selected(Some(0)),
-            pacman: Default::default(),
             packages: Default::default(),
             theme: Default::default(),
             active: Default::default(),
@@ -74,11 +68,6 @@ impl PackagesTable {
     fn reset_selection(&mut self) {
         self.state.select(Some(0));
     }
-
-    fn search_package(&mut self, package_name: &str) {
-        self.packages = self.pacman.search(package_name);
-        self.reset_selection();
-    }
 }
 
 impl Component for PackagesTable {
@@ -112,7 +101,10 @@ impl Component for PackagesTable {
 
     fn update(&mut self, action: &Action) {
         match action {
-            Action::SearchPackage(package_name) => self.search_package(package_name),
+            Action::FoundPackages(packages) => {
+                self.packages = (*packages).clone();
+                self.reset_selection();
+            }
             Action::Focus(focus) => {
                 if *focus == Focus::Table {
                     self.active = true;

@@ -11,7 +11,7 @@ pub struct HomeComponent {
     focus: Focus,
 }
 
-#[derive(Default, PartialEq)]
+#[derive(Default, PartialEq, Clone)]
 pub enum Focus {
     #[default]
     Search,

@@ -6,6 +6,7 @@ use ratatui::crossterm::{
 use crate::{
     action::Action,
     components::{home::HomeComponent, search::PackageSearch},
+    pacman::Pacman,
 };
 use crate::{components::table::PackagesTable, tui::TUI};
 use crate::{components::Component, pacman};
@@ -15,6 +16,7 @@ use std::io;
 pub struct App {
     tui: TUI,
     components: Vec<Box<dyn Component>>,
+    pacman: Pacman,
     exit: bool,
 }
 
@@ -30,6 +32,7 @@ impl App {
                 Box::new(PackageSearch::default()),
                 Box::new(PackagesTable::default()),
             ],
+            pacman: Default::default(),
             exit: Default::default(),
         })
     }
@@ -86,15 +89,23 @@ impl App {
     }
 
     fn handle_actions(&mut self, actions: Vec<Action>) {
+        let mut na = actions.clone();
         for action in actions {
-            self.handle_action(&action);
+            if let Some(act) = self.handle_action(&action) {
+                na.push(act);
+            }
+        }
+
+        for action in na {
             for component in self.components.iter_mut() {
                 component.update(&action);
             }
         }
     }
 
-    fn handle_action(&mut self, action: &Action) {
+    fn handle_action(&mut self, action: &Action) -> Option<Action> {
+        let mut new_action = None;
+
         match action {
             Action::InstallPackage(name) => {
                 self.tui
@@ -103,8 +114,13 @@ impl App {
                     })
                     .unwrap();
             }
+            Action::SearchPackage(package_name) => {
+                new_action = Some(Action::FoundPackages(self.pacman.search(package_name)));
+            }
             _ => {}
         }
+
+        new_action
     }
 
     fn exit(&mut self) {
