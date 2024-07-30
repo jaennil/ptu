@@ -60,10 +60,10 @@ impl Component for PackageSearch {
         Ok(actions)
     }
 
-    fn update(&mut self, action: &Action) {
+    fn update(&mut self, action: Action) {
         match action {
             Action::Focus(focus) => {
-                if *focus == Focus::Search {
+                if focus == Focus::Search {
                     self.active = true;
                 } else {
                     self.active = false;

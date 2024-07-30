@@ -99,14 +99,14 @@ impl Component for PackagesTable {
         Ok(actions)
     }
 
-    fn update(&mut self, action: &Action) {
+    fn update(&mut self, action: Action) {
         match action {
             Action::FoundPackages(packages) => {
-                self.packages = (*packages).clone();
+                self.packages = packages;
                 self.reset_selection();
             }
             Action::Focus(focus) => {
-                if *focus == Focus::Table {
+                if focus == Focus::Table {
                     self.active = true;
                 } else {
                     self.active = false;

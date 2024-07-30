@@ -89,16 +89,16 @@ impl App {
     }
 
     fn handle_actions(&mut self, actions: Vec<Action>) {
-        let mut na = actions.clone();
+        let mut new_actions = actions.clone();
         for action in actions {
-            if let Some(act) = self.handle_action(&action) {
-                na.push(act);
+            if let Some(action) = self.handle_action(&action) {
+                new_actions.push(action);
             }
         }
 
-        for action in na {
-            for component in self.components.iter_mut() {
-                component.update(&action);
+        for component in self.components.iter_mut() {
+            for action in new_actions.clone() {
+                component.update(action);
             }
         }
     }
