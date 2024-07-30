@@ -3,6 +3,7 @@ use std::process::Command;
 use alpm::{Alpm, SigLevel};
 
 // TODO: replace with alpm package
+#[derive(Clone)]
 pub struct Package {
     pub name: String,
     pub description: Option<String>,
