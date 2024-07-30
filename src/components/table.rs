@@ -71,7 +71,7 @@ impl PackagesTable {
 }
 
 impl Component for PackagesTable {
-    fn handle_key_event(&mut self, event: KeyEvent) -> io::Result<Vec<Action>> {
+    fn handle_key_event(&mut self, event: &KeyEvent) -> io::Result<Vec<Action>> {
         let mut actions = Vec::new();
 
         if !self.active {
@@ -99,14 +99,14 @@ impl Component for PackagesTable {
         Ok(actions)
     }
 
-    fn update(&mut self, action: Action) {
+    fn update(&mut self, action: &Action) {
         match action {
             Action::FoundPackages(packages) => {
-                self.packages = packages;
+                self.packages = (*packages).clone();
                 self.reset_selection();
             }
             Action::Focus(focus) => {
-                if focus == Focus::Table {
+                if *focus == Focus::Table {
                     self.active = true;
                 } else {
                     self.active = false;

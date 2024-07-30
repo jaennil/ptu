@@ -31,7 +31,7 @@ impl Default for PackageSearch {
 }
 
 impl Component for PackageSearch {
-    fn handle_key_event(&mut self, key: KeyEvent) -> io::Result<Vec<Action>> {
+    fn handle_key_event(&mut self, key: &KeyEvent) -> io::Result<Vec<Action>> {
         let mut actions = Vec::new();
 
         if !self.active {
@@ -46,7 +46,7 @@ impl Component for PackageSearch {
             } => {
                 match code {
                     KeyCode::Char(char) => {
-                        self.text.push(char);
+                        self.text.push(*char);
                     }
                     KeyCode::Backspace => {
                         self.text.pop();
@@ -60,10 +60,10 @@ impl Component for PackageSearch {
         Ok(actions)
     }
 
-    fn update(&mut self, action: Action) {
+    fn update(&mut self, action: &Action) {
         match action {
             Action::Focus(focus) => {
-                if focus == Focus::Search {
+                if *focus == Focus::Search {
                     self.active = true;
                 } else {
                     self.active = false;
