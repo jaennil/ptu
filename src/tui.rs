@@ -1,49 +1,46 @@
-use std::io::Stdout;
-use std::ops::DerefMut;
-use std::{io, ops::Deref};
+use std::{
+    io,
+    ops::{Deref, DerefMut},
+};
 
-use ratatui::backend::CrosstermBackend;
-use ratatui::crossterm::terminal::{EnterAlternateScreen, LeaveAlternateScreen};
-use ratatui::crossterm::{terminal, ExecutableCommand as _};
+use color_eyre::eyre;
+use ratatui::crossterm::{self, terminal};
 
-type Terminal = ratatui::Terminal<CrosstermBackend<Stdout>>;
+type Terminal = ratatui::Terminal<ratatui::backend::CrosstermBackend<std::io::Stdout>>;
 
-pub struct TUI {
+pub(crate) struct TUI {
     terminal: Terminal,
 }
 
 impl TUI {
-    pub fn new() -> io::Result<Self> {
+    pub(crate) fn new() -> eyre::Result<Self> {
         let writer = io::stdout();
-        let backend = CrosstermBackend::new(writer);
+        let backend = ratatui::backend::CrosstermBackend::new(writer);
         let terminal = ratatui::Terminal::new(backend)?;
-
         Ok(Self { terminal })
     }
 
-    pub fn init(&mut self) -> io::Result<()> {
+    pub(crate) fn enter() -> eyre::Result<()> {
         terminal::enable_raw_mode()?;
-        self.terminal.backend_mut().execute(EnterAlternateScreen)?;
+        crossterm::execute!(io::stdout(), terminal::EnterAlternateScreen)?;
         Ok(())
     }
 
-    pub fn restore(&mut self) -> io::Result<()> {
-        if terminal::is_raw_mode_enabled()? {
-            terminal::disable_raw_mode()?;
-            self.terminal.backend_mut().execute(LeaveAlternateScreen)?;
-        }
-
+    pub(crate) fn exit() -> eyre::Result<()> {
+        terminal::disable_raw_mode()?;
+        crossterm::execute!(io::stdout(), terminal::LeaveAlternateScreen)?;
         Ok(())
     }
 
-    pub fn suspend<F>(&mut self, f: F) -> io::Result<()>
+    pub(crate) fn suspend<F>(&mut self, f: F) -> eyre::Result<()>
     where
-        F: FnOnce(),
+        F: FnOnce() -> eyre::Result<()>,
     {
-        self.restore()?;
-        f();
-        self.init()?;
-        self.terminal.clear()
+        Self::exit()?;
+        f()?;
+        Self::enter()?;
+        self.clear()?;
+        Ok(())
     }
 }
 
