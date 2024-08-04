@@ -1,62 +1,48 @@
-use std::{io, process::Command};
+use std::process::Command;
 
 use alpm::{Alpm, SigLevel};
+use color_eyre::eyre;
 
-// TODO: replace with alpm package
-#[derive(Clone)]
-pub struct Package {
-    pub name: String,
-    pub description: Option<String>,
-}
-
-impl Package {
-    pub fn name(&self) -> &str {
-        return &self.name;
-    }
-}
-
-pub struct Pacman {
+pub(crate) struct Pacman {
     handle: Alpm,
 }
 
-//impl Default for Pacman {
-//    fn default() -> io::Self {
-//        Pacman::new()
-//    }
-//}
-
 impl Pacman {
-    pub fn new() -> alpm::Result<Self> {
+    pub(crate) fn new() -> eyre::Result<Self> {
         let handle = Alpm::new("/", "/var/lib/pacman")?;
 
         handle.register_syncdb("core", SigLevel::USE_DEFAULT)?;
         handle.register_syncdb("extra", SigLevel::USE_DEFAULT)?;
         handle.register_syncdb("community", SigLevel::USE_DEFAULT)?;
 
-        Ok(Pacman { handle })
+        Ok(Self { handle })
     }
 
-    pub fn search(&self, package: &str) -> Vec<Package> {
+    pub(crate) fn search_package(&self, package_name: &str) -> eyre::Result<Vec<Package>> {
         let mut packages = Vec::new();
 
         for db in self.handle.syncdbs() {
-            for pkg in db.search([package].iter()).unwrap() {
+            for pkg in db.search([package_name].iter())? {
                 packages.push(Package {
-                    name: pkg.name().to_string(),
-                    description: pkg.desc().map(str::to_string),
+                    name: pkg.name().to_owned(),
                 });
             }
         }
 
-        packages
+        Ok(packages)
     }
 }
 
-pub fn install(package_name: &str) -> io::Result<()> {
+pub(crate) fn install_package(package_name: &str) -> eyre::Result<()> {
     Command::new("sudo")
         .arg("pacman")
         .arg("-S")
         .arg(package_name)
         .status()?;
     Ok(())
+}
+
+#[derive(Clone)]
+pub(crate) struct Package {
+    pub(crate) name: String,
 }
