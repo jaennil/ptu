@@ -1,6 +1,7 @@
 use std::process;
 
 use crate::action::Action;
+use crate::components::package_info::PackageInfo;
 use crate::components::packages_table::PackagesTable;
 use crate::components::{package_input::PackageInput, Component};
 use crate::pacman::{self, Pacman};
@@ -28,6 +29,7 @@ impl App {
             components: vec![
                 Box::new(PackageInput::default()),
                 Box::new(PackagesTable::default()),
+                Box::new(PackageInfo::default()),
             ],
             pacman,
             should_exit,
@@ -121,6 +123,10 @@ impl App {
             Action::InstallPackage(package_name) => self
                 .tui
                 .suspend(|| -> eyre::Result<()> { pacman::install_package(package_name) }),
+            Action::SelectPackage(package) => {
+                events.push(crate::event::Event::PackageSelected(package.clone()));
+                Ok(())
+            }
         }?;
 
         Ok(events)

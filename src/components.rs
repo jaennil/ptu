@@ -1,3 +1,4 @@
+pub(crate) mod package_info;
 pub(crate) mod package_input;
 pub(crate) mod packages_table;
 
