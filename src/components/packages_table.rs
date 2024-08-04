@@ -10,22 +10,12 @@ use crate::components::Component;
 use crate::event::Event;
 use crate::{pacman::Package, theme::Theme};
 
+#[derive(Default)]
 pub(crate) struct PackagesTable {
     state: TableState,
     packages: Vec<Package>,
     theme: Theme,
     active: bool,
-}
-
-impl Default for PackagesTable {
-    fn default() -> Self {
-        Self {
-            state: TableState::default().with_selected(Some(0)),
-            packages: Default::default(),
-            theme: Default::default(),
-            active: Default::default(),
-        }
-    }
 }
 
 impl PackagesTable {
@@ -104,8 +94,20 @@ impl Component for PackagesTable {
                 code,
                 ..
             } => match code {
-                KeyCode::Char('j') => self.next(),
-                KeyCode::Char('k') => self.previous(),
+                KeyCode::Char('j') => {
+                    self.next();
+                    let package = self.get_selected_package();
+                    if let Some(package) = package {
+                        actions.push(Action::SelectPackage(package.clone()));
+                    }
+                }
+                KeyCode::Char('k') => {
+                    self.previous();
+                    let package = self.get_selected_package();
+                    if let Some(package) = package {
+                        actions.push(Action::SelectPackage(package.clone()));
+                    }
+                }
                 KeyCode::Char('i') => {
                     if let Some(package) = self.get_selected_package() {
                         let package_name = package.name.to_string();
@@ -126,21 +128,33 @@ impl Component for PackagesTable {
                 self.packages = packages.clone();
                 self.reset_selection();
             }
+            _ => {}
         }
 
         Ok(())
     }
 
     fn draw(&mut self, frame: &mut Frame, area: &Rect) -> eyre::Result<()> {
-        let area =
-            Layout::vertical([Constraint::Length(3), Constraint::Percentage(100)]).split(*area)[1];
+        let horizontal_layout =
+            Layout::horizontal([Constraint::Percentage(50), Constraint::Percentage(50)])
+                .split(*area)[0];
+        let area = Layout::vertical([Constraint::Length(3), Constraint::Percentage(100)])
+            .split(horizontal_layout)[1];
         let mut rows = Vec::new();
         for package in &self.packages {
-            rows.push(Row::new(vec![package.name.clone()]));
+            rows.push(Row::new(vec![
+                package.name.clone(),
+                package.source.clone(),
+                package.installed.to_string(),
+            ]));
         }
-        let widths = [Constraint::Percentage(25), Constraint::Percentage(65)];
+        let widths = [
+            Constraint::Length(20),
+            Constraint::Length(10),
+            Constraint::Percentage(100),
+        ];
         let header =
-            Row::new(["name", "description"]).style(Style::new().bold().fg(Color::Magenta));
+            Row::new(["name", "source", "installed"]).style(Style::new().bold().fg(Color::Magenta));
         let border_color = if self.active {
             self.theme.active
         } else {

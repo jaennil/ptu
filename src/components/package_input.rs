@@ -61,18 +61,17 @@ impl Component for PackageInput {
                 modifiers: KeyModifiers::NONE,
                 code,
                 ..
-            } => {
-                match code {
-                    KeyCode::Char(char) => {
-                        self.text.push(char);
-                    }
-                    KeyCode::Backspace => {
-                        self.text.pop();
-                    }
-                    _ => {}
+            } => match code {
+                KeyCode::Char(char) => {
+                    self.text.push(char);
+                    actions.push(Action::SearchPackage(self.text.clone()));
                 }
-                actions.push(Action::SearchPackage(self.text.clone()));
-            }
+                KeyCode::Backspace => {
+                    self.text.pop();
+                    actions.push(Action::SearchPackage(self.text.clone()));
+                }
+                _ => {}
+            },
             _ => {}
         }
 
@@ -80,8 +79,11 @@ impl Component for PackageInput {
     }
 
     fn draw(&mut self, frame: &mut Frame, area: &Rect) -> eyre::Result<()> {
-        let area =
-            Layout::vertical([Constraint::Length(3), Constraint::Percentage(100)]).split(*area)[0];
+        let horizontal_layout =
+            Layout::horizontal([Constraint::Percentage(50), Constraint::Percentage(50)])
+                .split(*area)[0];
+        let area = Layout::vertical([Constraint::Length(3), Constraint::Percentage(100)])
+            .split(horizontal_layout)[0];
         let border_color = if self.active {
             self.theme.active
         } else {
