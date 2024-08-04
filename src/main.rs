@@ -1,20 +1,21 @@
 mod action;
 mod app;
 mod components;
-mod errors;
+mod event;
 mod pacman;
+mod panic_hook;
 mod theme;
 mod tui;
 
-use app::App;
-use std::io;
+use crate::app::App;
 
-// TODO: mb try tui-term
-// TODO: mb try tui-input
-#[tokio::main]
-async fn main() -> io::Result<()> {
-    errors::init();
+use color_eyre::eyre;
+
+fn main() -> eyre::Result<()> {
+    panic_hook::init()?;
 
     let mut app = App::new()?;
-    app.run()
+    app.run()?;
+
+    Ok(())
 }

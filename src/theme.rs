@@ -1,8 +1,8 @@
 use ratatui::style::Color;
 
-pub struct Theme {
-    pub active: Color,
-    pub inactive: Color,
+pub(crate) struct Theme {
+    pub(crate) active: Color,
+    pub(crate) inactive: Color,
 }
 
 impl Default for Theme {

@@ -1,60 +1,59 @@
-use ratatui::crossterm::event::{self, Event, KeyCode, KeyEvent};
+use std::process;
 
-use crate::{
-    action::Action,
-    components::{home::HomeComponent, search::PackageSearch},
-    pacman::Pacman,
-};
-use crate::{components::table::PackagesTable, tui::TUI};
-use crate::{components::Component, pacman};
+use crate::action::Action;
+use crate::components::packages_table::PackagesTable;
+use crate::components::{package_input::PackageInput, Component};
+use crate::pacman::{self, Pacman};
+use crate::tui::TUI;
 
-use std::io;
+use color_eyre::eyre;
+use ratatui::crossterm;
+use ratatui::crossterm::event::{Event, KeyCode, KeyEvent};
 
-pub struct App {
+pub(crate) struct App {
     tui: TUI,
     components: Vec<Box<dyn Component>>,
     pacman: Pacman,
-    exit: bool,
+    should_exit: bool,
 }
 
 impl App {
-    pub fn new() -> io::Result<Self> {
-        let mut tui = TUI::new()?;
-        tui.init()?;
-
-        let pacman = match Pacman::new() {
-            Ok(pacman) => pacman,
-            Err(error) => return Err(io::Error::new(io::ErrorKind::Other, error.to_string())),
-        };
+    pub(crate) fn new() -> eyre::Result<Self> {
+        let tui = TUI::new()?;
+        let should_exit = Default::default();
+        let pacman = Pacman::new()?;
 
         Ok(Self {
             tui,
             components: vec![
-                Box::new(HomeComponent::default()),
-                Box::new(PackageSearch::default()),
+                Box::new(PackageInput::default()),
                 Box::new(PackagesTable::default()),
             ],
             pacman,
-            exit: Default::default(),
+            should_exit,
         })
     }
 
-    pub fn run(&mut self) -> io::Result<()> {
-        while !self.exit {
+    pub(crate) fn run(&mut self) -> eyre::Result<()> {
+        TUI::enter()?;
+
+        while !self.should_exit {
             self.render()?;
             let actions = self.handle_events()?;
-            self.handle_actions(&actions);
+            self.handle_actions(&actions)?;
         }
 
-        self.tui.restore()
+        TUI::exit()?;
+
+        Ok(())
     }
 
-    fn render(&mut self) -> io::Result<()> {
+    fn render(&mut self) -> eyre::Result<()> {
         self.tui.draw(|frame| {
             for component in self.components.iter_mut() {
-                if component.draw(frame, frame.size()).is_err() {
-                    // TODO: log error
-                    std::process::exit(1);
+                let result = component.draw(frame, &frame.size());
+                if result.is_err() {
+                    process::exit(1);
                 }
             }
         })?;
@@ -62,71 +61,68 @@ impl App {
         Ok(())
     }
 
-    fn handle_events(&mut self) -> io::Result<Vec<Action>> {
+    fn handle_events(&mut self) -> eyre::Result<Vec<Action>> {
         let mut actions = Vec::new();
 
-        match event::read()? {
+        match crossterm::event::read()? {
             Event::Key(key_event) => {
-                let mut components_actions = self.handle_key_event(&key_event)?;
-                actions.append(&mut components_actions);
+                let component_actions = self.handle_key_event(&key_event)?;
+                actions.extend(component_actions);
             }
             _ => {}
-        };
+        }
 
         Ok(actions)
     }
 
-    fn handle_key_event(&mut self, key_event: &KeyEvent) -> io::Result<Vec<Action>> {
-        let mut actions = Vec::new();
-
+    fn handle_key_event(&mut self, key_event: &KeyEvent) -> eyre::Result<Vec<Action>> {
         if key_event.code == KeyCode::Esc {
-            self.exit();
-            return Ok(actions);
+            self.should_exit = true;
         }
+
+        let mut actions = Vec::new();
 
         for component in self.components.iter_mut() {
             let component_actions = component.handle_key_event(key_event)?;
-            actions.extend(component_actions);
+            if let Some(component_actions) = component_actions {
+                actions.extend(component_actions);
+            }
         }
 
         Ok(actions)
     }
 
-    fn handle_actions(&mut self, actions: &Vec<Action>) -> io::Result<()> {
-        let mut app_actions = actions.clone();
+    fn handle_actions(&mut self, actions: &Vec<Action>) -> eyre::Result<()> {
+        let mut events = Vec::new();
 
         for action in actions {
-            let new_actions = self.handle_action(&action)?;
-            app_actions.extend(new_actions);
+            let app_events = self.handle_action(&action)?;
+            events.extend(app_events);
         }
 
         for component in self.components.iter_mut() {
-            for action in &app_actions {
-                component.update(action);
+            for event in &events {
+                component.update(event)?;
             }
         }
 
         Ok(())
     }
 
-    fn handle_action(&mut self, action: &Action) -> io::Result<Vec<Action>> {
-        let mut actions = Vec::new();
+    fn handle_action(&mut self, action: &Action) -> eyre::Result<Vec<crate::event::Event>> {
+        let mut events = Vec::new();
 
         match action {
-            Action::InstallPackage(name) => self.tui.suspend(|| {
-                pacman::install(name).unwrap();
-            })?,
             Action::SearchPackage(package_name) => {
-                let packages = self.pacman.search(package_name);
-                actions.push(Action::FoundPackages(packages));
+                let packages = self.pacman.search_package(package_name)?;
+                events.push(crate::event::Event::FoundPackages(packages));
+                Ok(())
             }
-            _ => {}
-        }
+            Action::InstallPackage(package_name) => self
+                .tui
+                .suspend(|| -> eyre::Result<()> { pacman::install_package(package_name) }),
+        }?;
 
-        Ok(actions)
-    }
-
-    fn exit(&mut self) {
-        self.exit = true;
+        Ok(events)
     }
 }
