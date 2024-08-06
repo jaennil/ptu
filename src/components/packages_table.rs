@@ -108,11 +108,25 @@ impl Component for PackagesTable {
                         actions.push(Action::SelectPackage(package.clone()));
                     }
                 }
+                KeyCode::Char('g') => {
+                    self.state.select(Some(0));
+                }
                 KeyCode::Char('i') => {
                     if let Some(package) = self.get_selected_package() {
                         let package_name = package.name.to_string();
                         actions.push(Action::InstallPackage(package_name));
                     }
+                }
+                _ => {}
+            },
+            KeyEvent {
+                modifiers: KeyModifiers::SHIFT,
+                code,
+                ..
+            } => match code {
+                KeyCode::Char('G') => {
+                    let packages_amount = self.packages.len();
+                    self.state.select(Some(packages_amount - 1));
                 }
                 _ => {}
             },
