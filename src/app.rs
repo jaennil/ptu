@@ -118,19 +118,38 @@ impl App {
             Action::SearchPackage(package_name) => {
                 let packages = self.pacman.search_package(package_name)?;
                 events.push(crate::event::Event::FoundPackages(packages));
-                Ok(())
             }
-            Action::InstallPackage(package_name) => self
-                .tui
-                .suspend(|| -> eyre::Result<()> { pacman::install_package(package_name) }),
-            Action::UpdateInstallPackage(package_name) => self
-                .tui
-                .suspend(|| -> eyre::Result<()> { pacman::update_install_package(package_name) }),
+            Action::InstallPackage(package_name) => {
+                self.tui.suspend(|| -> eyre::Result<()> {
+                    let status = pacman::install_package(package_name)?;
+                    if status.success() {
+                        events.push(crate::event::Event::PackageInstalled(package_name.clone()));
+                    }
+                    Ok(())
+                })?;
+            }
+            Action::UpdateInstallPackage(package_name) => {
+                self.tui.suspend(|| -> eyre::Result<()> {
+                    let status = pacman::update_install_package(package_name)?;
+                    if status.success() {
+                        events.push(crate::event::Event::PackageInstalled(package_name.clone()));
+                    }
+                    Ok(())
+                })?;
+            }
+            Action::RemovePackage(package_name) => {
+                self.tui.suspend(|| -> eyre::Result<()> {
+                    let status = pacman::remove_package(package_name)?;
+                    if status.success() {
+                        events.push(crate::event::Event::PackageRemoved(package_name.clone()));
+                    }
+                    Ok(())
+                })?;
+            }
             Action::SelectPackage(package) => {
                 events.push(crate::event::Event::PackageSelected(package.clone()));
-                Ok(())
             }
-        }?;
+        };
 
         Ok(events)
     }

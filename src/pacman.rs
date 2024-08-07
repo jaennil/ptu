@@ -1,4 +1,4 @@
-use std::process::Command;
+use std::process::{Command, ExitStatus};
 
 use alpm::{Alpm, SigLevel};
 use color_eyre::eyre;
@@ -46,22 +46,31 @@ impl Pacman {
     }
 }
 
-pub(crate) fn install_package(package_name: &str) -> eyre::Result<()> {
-    Command::new("sudo")
+pub(crate) fn install_package(package_name: &str) -> eyre::Result<ExitStatus> {
+    let status = Command::new("sudo")
         .arg("pacman")
         .arg("-S")
         .arg(package_name)
         .status()?;
-    Ok(())
+    Ok(status)
 }
 
-pub(crate) fn update_install_package(package_name: &str) -> eyre::Result<()> {
-    Command::new("sudo")
+pub(crate) fn remove_package(package_name: &str) -> eyre::Result<ExitStatus> {
+    let status = Command::new("sudo")
+        .arg("pacman")
+        .arg("-R")
+        .arg(package_name)
+        .status()?;
+    Ok(status)
+}
+
+pub(crate) fn update_install_package(package_name: &str) -> eyre::Result<ExitStatus> {
+    let status = Command::new("sudo")
         .arg("pacman")
         .arg("-Syu")
         .arg(package_name)
         .status()?;
-    Ok(())
+    Ok(status)
 }
 
 #[derive(Clone, Default)]

@@ -115,7 +115,12 @@ impl Component for PackagesTable {
                     if let Some(package) = self.get_selected_package() {
                         let package_name = package.name.to_string();
                         actions.push(Action::InstallPackage(package_name));
-                        package.installed = true;
+                    }
+                }
+                KeyCode::Char('r') => {
+                    if let Some(package) = self.get_selected_package() {
+                        let package_name = package.name.to_string();
+                        actions.push(Action::RemovePackage(package_name));
                     }
                 }
                 _ => {}
@@ -133,7 +138,6 @@ impl Component for PackagesTable {
                     if let Some(package) = self.get_selected_package() {
                         let package_name = package.name.to_string();
                         actions.push(Action::UpdateInstallPackage(package_name));
-                        package.installed = true;
                     }
                 }
                 _ => {}
@@ -149,6 +153,22 @@ impl Component for PackagesTable {
             Event::FoundPackages(packages) => {
                 self.packages = packages.clone();
                 self.reset_selection();
+            }
+            Event::PackageInstalled(package_name) => {
+                let index = self
+                    .packages
+                    .iter()
+                    .position(|p| p.name == *package_name)
+                    .unwrap();
+                self.packages[index].installed = true;
+            }
+            Event::PackageRemoved(package_name) => {
+                let index = self
+                    .packages
+                    .iter()
+                    .position(|p| p.name == *package_name)
+                    .unwrap();
+                self.packages[index].installed = false;
             }
             _ => {}
         }
