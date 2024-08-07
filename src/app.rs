@@ -123,6 +123,9 @@ impl App {
             Action::InstallPackage(package_name) => self
                 .tui
                 .suspend(|| -> eyre::Result<()> { pacman::install_package(package_name) }),
+            Action::UpdateInstallPackage(package_name) => self
+                .tui
+                .suspend(|| -> eyre::Result<()> { pacman::update_install_package(package_name) }),
             Action::SelectPackage(package) => {
                 events.push(crate::event::Event::PackageSelected(package.clone()));
                 Ok(())

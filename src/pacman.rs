@@ -55,6 +55,15 @@ pub(crate) fn install_package(package_name: &str) -> eyre::Result<()> {
     Ok(())
 }
 
+pub(crate) fn update_install_package(package_name: &str) -> eyre::Result<()> {
+    Command::new("sudo")
+        .arg("pacman")
+        .arg("-Syu")
+        .arg(package_name)
+        .status()?;
+    Ok(())
+}
+
 #[derive(Clone, Default)]
 pub(crate) struct Package {
     pub(crate) name: String,

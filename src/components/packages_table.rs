@@ -128,6 +128,12 @@ impl Component for PackagesTable {
                     let packages_amount = self.packages.len();
                     self.state.select(Some(packages_amount - 1));
                 }
+                KeyCode::Char('I') => {
+                    if let Some(package) = self.get_selected_package() {
+                        let package_name = package.name.to_string();
+                        actions.push(Action::UpdateInstallPackage(package_name));
+                    }
+                }
                 _ => {}
             },
             _ => {}
