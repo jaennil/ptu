@@ -47,9 +47,9 @@ impl PackagesTable {
         self.state.select(Some(i));
     }
 
-    fn get_selected_package(&self) -> Option<&Package> {
+    fn get_selected_package(&mut self) -> Option<&mut Package> {
         let index = self.state.selected()?;
-        self.packages.get(index)
+        self.packages.get_mut(index)
     }
 
     fn reset_selection(&mut self) {
@@ -115,6 +115,7 @@ impl Component for PackagesTable {
                     if let Some(package) = self.get_selected_package() {
                         let package_name = package.name.to_string();
                         actions.push(Action::InstallPackage(package_name));
+                        package.installed = true;
                     }
                 }
                 _ => {}
@@ -132,6 +133,7 @@ impl Component for PackagesTable {
                     if let Some(package) = self.get_selected_package() {
                         let package_name = package.name.to_string();
                         actions.push(Action::UpdateInstallPackage(package_name));
+                        package.installed = true;
                     }
                 }
                 _ => {}
