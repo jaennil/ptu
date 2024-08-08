@@ -184,10 +184,11 @@ impl Component for PackagesTable {
             .split(horizontal_layout)[1];
         let mut rows = Vec::new();
         for package in &self.packages {
+            let installed = format!("[{}]", if package.installed { "✔" } else { " " });
             rows.push(Row::new(vec![
                 package.name.clone(),
                 package.source.clone(),
-                package.installed.to_string(),
+                installed.to_string(),
             ]));
         }
         let widths = [
