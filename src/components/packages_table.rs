@@ -1,8 +1,11 @@
+use std::str::FromStr as _;
+
 use color_eyre::eyre;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style, Stylize as _};
-use ratatui::widgets::{Block, Row, Table, TableState};
+use ratatui::text::{Line, Span};
+use ratatui::widgets::{Block, Cell, Row, Table, TableState};
 use ratatui::Frame;
 
 use crate::action::Action;
@@ -184,12 +187,24 @@ impl Component for PackagesTable {
             .split(horizontal_layout)[1];
         let mut rows = Vec::new();
         for package in &self.packages {
-            let installed = format!("[{}]", if package.installed { "✔" } else { " " });
-            rows.push(Row::new(vec![
-                package.name.clone(),
-                package.source.clone(),
-                installed.to_string(),
-            ]));
+            if package.installed {
+                let installed = vec![
+                    Span::from("["),
+                    Span::styled("✔", Style::default().fg(Color::from_str("#00ff00")?)),
+                    Span::from("]"),
+                ];
+                rows.push(Row::new(vec![
+                    Cell::from(package.name.clone()),
+                    Cell::from(package.source.clone()),
+                    Cell::from(Line::from(installed)),
+                ]));
+            } else {
+                rows.push(Row::new(vec![
+                    package.name.clone(),
+                    package.source.clone(),
+                    "[ ]".to_string(),
+                ]));
+            }
         }
         let widths = [
             Constraint::Length(20),
