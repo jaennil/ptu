@@ -72,6 +72,22 @@ impl Component for PackageInput {
                 }
                 _ => {}
             },
+            KeyEvent {
+                modifiers: KeyModifiers::CONTROL,
+                code,
+                ..
+            } => match code {
+                KeyCode::Char('w') => {
+                    let without_last_word = self.text.rsplit_once(' ');
+                    if let Some(parts) = without_last_word {
+                        self.text = parts.0.to_string();
+                    } else {
+                        self.text = String::from("");
+                    }
+                    actions.push(Action::SearchPackage(self.text.clone()));
+                }
+                _ => {}
+            },
             _ => {}
         }
 
