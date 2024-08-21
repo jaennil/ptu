@@ -113,6 +113,10 @@ impl Component for PackagesTable {
                 }
                 KeyCode::Char('g') => {
                     self.state.select(Some(0));
+                    let package = self.get_selected_package();
+                    if let Some(package) = package {
+                        actions.push(Action::SelectPackage(package.clone()));
+                    }
                 }
                 KeyCode::Char('i') => {
                     if let Some(package) = self.get_selected_package() {
@@ -136,6 +140,10 @@ impl Component for PackagesTable {
                 KeyCode::Char('G') => {
                     let packages_amount = self.packages.len();
                     self.state.select(Some(packages_amount - 1));
+                    let package = self.get_selected_package();
+                    if let Some(package) = package {
+                        actions.push(Action::SelectPackage(package.clone()));
+                    }
                 }
                 KeyCode::Char('I') => {
                     if let Some(package) = self.get_selected_package() {
