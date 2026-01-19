@@ -7,6 +7,7 @@ use ratatui::Frame;
 
 use crate::action::Action;
 use crate::components::Component;
+use crate::focus::{handle_focus_keys, FocusPosition};
 use crate::theme::Theme;
 
 pub(crate) struct PackageInput {
@@ -27,31 +28,10 @@ impl Default for PackageInput {
 
 impl Component for PackageInput {
     fn handle_key_event(&mut self, key_event: &KeyEvent) -> eyre::Result<Option<Vec<Action>>> {
-        let actions = None;
-
-        match *key_event {
-            KeyEvent {
-                modifiers: KeyModifiers::CONTROL,
-                code,
-                ..
-            } => match code {
-                KeyCode::Char('k') => self.active = true,
-                KeyCode::Char('j') => self.active = false,
-                _ => {}
-            },
-            KeyEvent {
-                modifiers: KeyModifiers::NONE,
-                code,
-                ..
-            } => match code {
-                KeyCode::Tab => self.active = !self.active,
-                _ => {}
-            },
-            _ => {}
-        }
+        handle_focus_keys(key_event, &mut self.active, FocusPosition::Top);
 
         if !self.active {
-            return Ok(actions);
+            return Ok(None);
         }
 
         let mut actions = Vec::new();

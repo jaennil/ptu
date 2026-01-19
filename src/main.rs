@@ -2,6 +2,7 @@ mod action;
 mod app;
 mod components;
 mod event;
+mod focus;
 mod logging;
 mod pacman;
 mod panic_hook;

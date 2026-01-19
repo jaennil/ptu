@@ -11,6 +11,7 @@ use ratatui::Frame;
 use crate::action::Action;
 use crate::components::Component;
 use crate::event::Event;
+use crate::focus::{handle_focus_keys, FocusPosition};
 use crate::{pacman::Package, theme::Theme};
 
 #[derive(Default)]
@@ -62,31 +63,10 @@ impl PackagesTable {
 
 impl Component for PackagesTable {
     fn handle_key_event(&mut self, key_event: &KeyEvent) -> eyre::Result<Option<Vec<Action>>> {
-        let actions = None;
-
-        match key_event {
-            KeyEvent {
-                modifiers: KeyModifiers::CONTROL,
-                code,
-                ..
-            } => match code {
-                KeyCode::Char('j') => self.active = true,
-                KeyCode::Char('k') => self.active = false,
-                _ => {}
-            },
-            KeyEvent {
-                modifiers: KeyModifiers::NONE,
-                code,
-                ..
-            } => match code {
-                KeyCode::Tab => self.active = !self.active,
-                _ => {}
-            },
-            _ => {}
-        }
+        handle_focus_keys(key_event, &mut self.active, FocusPosition::Bottom);
 
         if !self.active {
-            return Ok(actions);
+            return Ok(None);
         }
 
         let mut actions = Vec::new();
