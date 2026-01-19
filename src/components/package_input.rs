@@ -40,35 +40,32 @@ impl Component for PackageInput {
         match *key_event {
             KeyEvent {
                 modifiers: KeyModifiers::NONE,
-                code,
+                code: KeyCode::Char(char),
                 ..
-            } => match code {
-                KeyCode::Char(char) => {
-                    self.text.push(char);
-                    actions.push(Action::SearchPackage(self.text.clone()));
-                }
-                KeyCode::Backspace => {
-                    self.text.pop();
-                    actions.push(Action::SearchPackage(self.text.clone()));
-                }
-                _ => {}
-            },
+            } => {
+                self.text.push(char);
+                actions.push(Action::SearchPackage(self.text.clone()));
+            }
+            KeyEvent {
+                modifiers: KeyModifiers::NONE,
+                code: KeyCode::Backspace,
+                ..
+            } => {
+                self.text.pop();
+                actions.push(Action::SearchPackage(self.text.clone()));
+            }
             KeyEvent {
                 modifiers: KeyModifiers::CONTROL,
-                code,
+                code: KeyCode::Char('w'),
                 ..
-            } => match code {
-                KeyCode::Char('w') => {
-                    let without_last_word = self.text.rsplit_once(' ');
-                    if let Some(parts) = without_last_word {
-                        self.text = parts.0.to_string();
-                    } else {
-                        self.text = String::from("");
-                    }
-                    actions.push(Action::SearchPackage(self.text.clone()));
+            } => {
+                if let Some((prefix, _)) = self.text.rsplit_once(' ') {
+                    self.text = prefix.to_string();
+                } else {
+                    self.text.clear();
                 }
-                _ => {}
-            },
+                actions.push(Action::SearchPackage(self.text.clone()));
+            }
             _ => {}
         }
 

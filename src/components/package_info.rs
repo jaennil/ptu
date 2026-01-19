@@ -60,11 +60,8 @@ impl Component for PackageInfo {
     }
 
     fn update(&mut self, event: &Event) -> eyre::Result<()> {
-        match event {
-            Event::PackageSelected(package) => {
-                self.package = package.clone();
-            }
-            _ => {}
+        if let Event::PackageSelected(package) = event {
+            self.package = package.clone();
         }
 
         Ok(())

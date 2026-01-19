@@ -8,11 +8,11 @@ use ratatui::crossterm::{self, terminal};
 
 type Terminal = ratatui::Terminal<ratatui::backend::CrosstermBackend<std::io::Stdout>>;
 
-pub(crate) struct TUI {
+pub(crate) struct Tui {
     terminal: Terminal,
 }
 
-impl TUI {
+impl Tui {
     pub(crate) fn new() -> eyre::Result<Self> {
         let writer = io::stdout();
         let backend = ratatui::backend::CrosstermBackend::new(writer);
@@ -44,7 +44,7 @@ impl TUI {
     }
 }
 
-impl Deref for TUI {
+impl Deref for Tui {
     type Target = Terminal;
 
     fn deref(&self) -> &Self::Target {
@@ -52,7 +52,7 @@ impl Deref for TUI {
     }
 }
 
-impl DerefMut for TUI {
+impl DerefMut for Tui {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.terminal
     }

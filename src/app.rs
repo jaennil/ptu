@@ -5,14 +5,14 @@ use crate::components::package_info::PackageInfo;
 use crate::components::packages_table::PackagesTable;
 use crate::components::{package_input::PackageInput, Component};
 use crate::pacman::{self, Pacman};
-use crate::tui::TUI;
+use crate::tui::Tui;
 
 use color_eyre::eyre;
 use ratatui::crossterm;
 use ratatui::crossterm::event::{Event, KeyCode, KeyEvent};
 
 pub(crate) struct App {
-    tui: TUI,
+    tui: Tui,
     components: Vec<Box<dyn Component>>,
     pacman: Pacman,
     should_exit: bool,
@@ -20,7 +20,7 @@ pub(crate) struct App {
 
 impl App {
     pub(crate) fn new() -> eyre::Result<Self> {
-        let tui = TUI::new()?;
+        let tui = Tui::new()?;
         let should_exit = Default::default();
         let pacman = Pacman::new()?;
 
@@ -38,7 +38,7 @@ impl App {
 
     pub(crate) fn run(&mut self) -> eyre::Result<()> {
         tracing::debug!("entering TUI mode");
-        TUI::enter()?;
+        Tui::enter()?;
 
         while !self.should_exit {
             self.render()?;
@@ -47,7 +47,7 @@ impl App {
         }
 
         tracing::debug!("exiting TUI mode");
-        TUI::exit()?;
+        Tui::exit()?;
 
         Ok(())
     }
@@ -74,12 +74,9 @@ impl App {
     fn handle_events(&mut self) -> eyre::Result<Vec<Action>> {
         let mut actions = Vec::new();
 
-        match crossterm::event::read()? {
-            Event::Key(key_event) => {
-                let component_actions = self.handle_key_event(&key_event)?;
-                actions.extend(component_actions);
-            }
-            _ => {}
+        if let Event::Key(key_event) = crossterm::event::read()? {
+            let component_actions = self.handle_key_event(&key_event)?;
+            actions.extend(component_actions);
         }
 
         Ok(actions)
@@ -106,7 +103,7 @@ impl App {
         let mut events = Vec::new();
 
         for action in actions {
-            let app_events = self.handle_action(&action)?;
+            let app_events = self.handle_action(action)?;
             events.extend(app_events);
         }
 
