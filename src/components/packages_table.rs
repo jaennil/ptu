@@ -3,7 +3,7 @@ use std::str::FromStr as _;
 use color_eyre::eyre;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::layout::{Constraint, Layout, Rect};
-use ratatui::style::{Color, Modifier, Style, Stylize as _};
+use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Cell, Row, Table, TableState};
 use ratatui::Frame;
@@ -166,20 +166,14 @@ impl Component for PackagesTable {
                 self.reset_selection();
             }
             Event::PackageInstalled(package_name) => {
-                let index = self
-                    .packages
-                    .iter()
-                    .position(|p| p.name == *package_name)
-                    .unwrap();
-                self.packages[index].installed = true;
+                if let Some(index) = self.packages.iter().position(|p| p.name == *package_name) {
+                    self.packages[index].installed = true;
+                }
             }
             Event::PackageRemoved(package_name) => {
-                let index = self
-                    .packages
-                    .iter()
-                    .position(|p| p.name == *package_name)
-                    .unwrap();
-                self.packages[index].installed = false;
+                if let Some(index) = self.packages.iter().position(|p| p.name == *package_name) {
+                    self.packages[index].installed = false;
+                }
             }
             _ => {}
         }
@@ -229,7 +223,7 @@ impl Component for PackagesTable {
         let output = Table::new(rows, widths)
             .header(header)
             .block(Block::bordered().border_style(Style::default().fg(border_color)))
-            .highlight_style(Style::new().add_modifier(Modifier::REVERSED));
+            .row_highlight_style(Style::new().add_modifier(Modifier::REVERSED));
         frame.render_stateful_widget(output, area, &mut self.state);
         Ok(())
     }

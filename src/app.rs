@@ -1,4 +1,4 @@
-use std::process;
+use std::cell::RefCell;
 
 use crate::action::Action;
 use crate::components::package_info::PackageInfo;
@@ -51,14 +51,20 @@ impl App {
     }
 
     fn render(&mut self) -> eyre::Result<()> {
+        let render_error: RefCell<Option<eyre::Report>> = RefCell::new(None);
+
         self.tui.draw(|frame| {
             for component in self.components.iter_mut() {
-                let result = component.draw(frame, &frame.size());
-                if result.is_err() {
-                    process::exit(1);
+                if let Err(e) = component.draw(frame, &frame.area()) {
+                    *render_error.borrow_mut() = Some(e);
+                    return;
                 }
             }
         })?;
+
+        if let Some(e) = render_error.into_inner() {
+            return Err(e);
+        }
 
         Ok(())
     }
