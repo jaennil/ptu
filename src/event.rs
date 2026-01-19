@@ -5,4 +5,5 @@ pub(crate) enum Event {
     PackageSelected(Package),
     PackageInstalled(String),
     PackageRemoved(String),
+    OperationFailed { package: String, error: String },
 }

@@ -137,7 +137,12 @@ impl App {
                         tracing::info!(package_name, "package installed successfully");
                         events.push(crate::event::Event::PackageInstalled(package_name.clone()));
                     } else {
-                        tracing::warn!(package_name, code = ?status.code(), "package installation failed");
+                        let error = format!("pacman -S exited with code {:?}", status.code());
+                        tracing::warn!(package_name, %error, "package installation failed");
+                        events.push(crate::event::Event::OperationFailed {
+                            package: package_name.clone(),
+                            error,
+                        });
                     }
                     Ok(())
                 })?;
@@ -150,7 +155,12 @@ impl App {
                         tracing::info!(package_name, "package updated and installed successfully");
                         events.push(crate::event::Event::PackageInstalled(package_name.clone()));
                     } else {
-                        tracing::warn!(package_name, code = ?status.code(), "package update/install failed");
+                        let error = format!("pacman -Syu exited with code {:?}", status.code());
+                        tracing::warn!(package_name, %error, "package update/install failed");
+                        events.push(crate::event::Event::OperationFailed {
+                            package: package_name.clone(),
+                            error,
+                        });
                     }
                     Ok(())
                 })?;
@@ -163,7 +173,12 @@ impl App {
                         tracing::info!(package_name, "package removed successfully");
                         events.push(crate::event::Event::PackageRemoved(package_name.clone()));
                     } else {
-                        tracing::warn!(package_name, code = ?status.code(), "package removal failed");
+                        let error = format!("pacman -R exited with code {:?}", status.code());
+                        tracing::warn!(package_name, %error, "package removal failed");
+                        events.push(crate::event::Event::OperationFailed {
+                            package: package_name.clone(),
+                            error,
+                        });
                     }
                     Ok(())
                 })?;
