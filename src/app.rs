@@ -102,7 +102,7 @@ impl App {
         Ok(actions)
     }
 
-    fn handle_actions(&mut self, actions: &Vec<Action>) -> eyre::Result<()> {
+    fn handle_actions(&mut self, actions: &[Action]) -> eyre::Result<()> {
         let mut events = Vec::new();
 
         for action in actions {
