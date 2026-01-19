@@ -12,6 +12,7 @@ use crate::action::Action;
 use crate::components::Component;
 use crate::event::Event;
 use crate::focus::{handle_focus_keys, FocusPosition};
+use crate::layout::{INPUT_HEIGHT, LEFT_PANEL_PERCENT};
 use crate::{pacman::Package, theme::Theme};
 
 #[derive(Default)]
@@ -162,10 +163,12 @@ impl Component for PackagesTable {
     }
 
     fn draw(&mut self, frame: &mut Frame, area: &Rect) -> eyre::Result<()> {
-        let horizontal_layout =
-            Layout::horizontal([Constraint::Percentage(50), Constraint::Percentage(50)])
-                .split(*area)[0];
-        let area = Layout::vertical([Constraint::Length(3), Constraint::Percentage(100)])
+        let horizontal_layout = Layout::horizontal([
+            Constraint::Percentage(LEFT_PANEL_PERCENT),
+            Constraint::Percentage(100 - LEFT_PANEL_PERCENT),
+        ])
+        .split(*area)[0];
+        let area = Layout::vertical([Constraint::Length(INPUT_HEIGHT), Constraint::Percentage(100)])
             .split(horizontal_layout)[1];
         let mut rows = Vec::new();
         for package in &self.packages {

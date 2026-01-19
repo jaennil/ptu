@@ -8,7 +8,10 @@ use ratatui::{
 };
 use textwrap::wrap;
 
-use crate::{components::Component, event::Event, pacman::Package, theme::Theme};
+use crate::{
+    components::Component, event::Event, layout::{LABEL_WIDTH, LEFT_PANEL_PERCENT}, pacman::Package,
+    theme::Theme,
+};
 
 #[derive(Default)]
 pub(crate) struct PackageInfo {
@@ -29,12 +32,14 @@ fn create_row<'a>(label: &'a str, value: &'a str, width: usize) -> Row<'a> {
 
 impl Component for PackageInfo {
     fn draw(&mut self, frame: &mut Frame, area: &Rect) -> eyre::Result<()> {
-        let area = Layout::horizontal([Constraint::Percentage(50), Constraint::Percentage(50)])
-            .split(*area)[1];
+        let area = Layout::horizontal([
+            Constraint::Percentage(LEFT_PANEL_PERCENT),
+            Constraint::Percentage(100 - LEFT_PANEL_PERCENT),
+        ])
+        .split(*area)[1];
 
-        let label_width = 15u16;
         let border_padding = 3u16;
-        let value_width = area.width.saturating_sub(label_width + border_padding) as usize;
+        let value_width = area.width.saturating_sub(LABEL_WIDTH + border_padding) as usize;
 
         let rows = [
             create_row("description", &self.package.description, value_width),
@@ -47,7 +52,7 @@ impl Component for PackageInfo {
             create_row("sha256sum", &self.package.sha256sum, value_width),
             create_row("arch", &self.package.arch, value_width),
         ];
-        let widths = [Constraint::Length(label_width), Constraint::Percentage(100)];
+        let widths = [Constraint::Length(LABEL_WIDTH), Constraint::Percentage(100)];
         let table = Table::new(rows, widths)
             .block(Block::bordered().border_style(Style::default().fg(self.theme.active)));
         frame.render_widget(table, area);

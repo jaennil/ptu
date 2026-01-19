@@ -3,6 +3,7 @@ mod app;
 mod components;
 mod event;
 mod focus;
+mod layout;
 mod logging;
 mod pacman;
 mod panic_hook;
