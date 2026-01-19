@@ -37,6 +37,7 @@ impl App {
     }
 
     pub(crate) fn run(&mut self) -> eyre::Result<()> {
+        tracing::debug!("entering TUI mode");
         TUI::enter()?;
 
         while !self.should_exit {
@@ -45,6 +46,7 @@ impl App {
             self.handle_actions(&actions)?;
         }
 
+        tracing::debug!("exiting TUI mode");
         TUI::exit()?;
 
         Ok(())
@@ -122,37 +124,52 @@ impl App {
 
         match action {
             Action::SearchPackage(package_name) => {
+                tracing::debug!(package_name, "searching for package");
                 let packages = self.pacman.search_package(package_name)?;
+                tracing::debug!(count = packages.len(), "found packages");
                 events.push(crate::event::Event::FoundPackages(packages));
             }
             Action::InstallPackage(package_name) => {
+                tracing::info!(package_name, "installing package");
                 self.tui.suspend(|| -> eyre::Result<()> {
                     let status = pacman::install_package(package_name)?;
                     if status.success() {
+                        tracing::info!(package_name, "package installed successfully");
                         events.push(crate::event::Event::PackageInstalled(package_name.clone()));
+                    } else {
+                        tracing::warn!(package_name, code = ?status.code(), "package installation failed");
                     }
                     Ok(())
                 })?;
             }
             Action::UpdateInstallPackage(package_name) => {
+                tracing::info!(package_name, "updating and installing package");
                 self.tui.suspend(|| -> eyre::Result<()> {
                     let status = pacman::update_install_package(package_name)?;
                     if status.success() {
+                        tracing::info!(package_name, "package updated and installed successfully");
                         events.push(crate::event::Event::PackageInstalled(package_name.clone()));
+                    } else {
+                        tracing::warn!(package_name, code = ?status.code(), "package update/install failed");
                     }
                     Ok(())
                 })?;
             }
             Action::RemovePackage(package_name) => {
+                tracing::info!(package_name, "removing package");
                 self.tui.suspend(|| -> eyre::Result<()> {
                     let status = pacman::remove_package(package_name)?;
                     if status.success() {
+                        tracing::info!(package_name, "package removed successfully");
                         events.push(crate::event::Event::PackageRemoved(package_name.clone()));
+                    } else {
+                        tracing::warn!(package_name, code = ?status.code(), "package removal failed");
                     }
                     Ok(())
                 })?;
             }
             Action::SelectPackage(package) => {
+                tracing::debug!(package_name = package.name, "package selected");
                 events.push(crate::event::Event::PackageSelected(package.clone()));
             }
         };

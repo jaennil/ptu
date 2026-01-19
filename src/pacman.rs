@@ -9,12 +9,15 @@ pub(crate) struct Pacman {
 
 impl Pacman {
     pub(crate) fn new() -> eyre::Result<Self> {
+        tracing::debug!("initializing pacman handle");
         let handle = Alpm::new("/", "/var/lib/pacman")?;
 
+        tracing::debug!("registering sync databases");
         handle.register_syncdb("core", SigLevel::USE_DEFAULT)?;
         handle.register_syncdb("extra", SigLevel::USE_DEFAULT)?;
         handle.register_syncdb("community", SigLevel::USE_DEFAULT)?;
 
+        tracing::debug!("pacman handle initialized successfully");
         Ok(Self { handle })
     }
 
@@ -47,29 +50,35 @@ impl Pacman {
 }
 
 pub(crate) fn install_package(package_name: &str) -> eyre::Result<ExitStatus> {
+    tracing::debug!(package_name, "executing pacman -S");
     let status = Command::new("sudo")
         .arg("pacman")
         .arg("-S")
         .arg(package_name)
         .status()?;
+    tracing::debug!(package_name, code = ?status.code(), "pacman -S completed");
     Ok(status)
 }
 
 pub(crate) fn remove_package(package_name: &str) -> eyre::Result<ExitStatus> {
+    tracing::debug!(package_name, "executing pacman -R");
     let status = Command::new("sudo")
         .arg("pacman")
         .arg("-R")
         .arg(package_name)
         .status()?;
+    tracing::debug!(package_name, code = ?status.code(), "pacman -R completed");
     Ok(status)
 }
 
 pub(crate) fn update_install_package(package_name: &str) -> eyre::Result<ExitStatus> {
+    tracing::debug!(package_name, "executing pacman -Syu");
     let status = Command::new("sudo")
         .arg("pacman")
         .arg("-Syu")
         .arg(package_name)
         .status()?;
+    tracing::debug!(package_name, code = ?status.code(), "pacman -Syu completed");
     Ok(status)
 }
 
