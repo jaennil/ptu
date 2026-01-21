@@ -1,11 +1,12 @@
 use std::cell::RefCell;
+use std::sync::mpsc::{self, Receiver, Sender};
 
 use crate::action::Action;
 use crate::aur;
 use crate::components::package_info::PackageInfo;
 use crate::components::packages_table::PackagesTable;
 use crate::components::{package_input::PackageInput, Component};
-use crate::pacman::{self, Pacman};
+use crate::pacman::{self, Package, Pacman};
 use crate::tui::Tui;
 
 use color_eyre::eyre;
@@ -14,9 +15,12 @@ use ratatui::crossterm::event::{Event, KeyCode, KeyEvent};
 
 pub(crate) struct App {
     tui: Tui,
+    package_input: PackageInput,
     components: Vec<Box<dyn Component>>,
     pacman: Pacman,
     should_exit: bool,
+    aur_sender: Sender<Vec<Package>>,
+    aur_receiver: Receiver<Vec<Package>>,
 }
 
 impl App {
@@ -24,16 +28,19 @@ impl App {
         let tui = Tui::new()?;
         let should_exit = Default::default();
         let pacman = Pacman::new()?;
+        let (aur_sender, aur_receiver) = mpsc::channel();
 
         Ok(Self {
             tui,
+            package_input: PackageInput::default(),
             components: vec![
-                Box::new(PackageInput::default()),
                 Box::new(PackagesTable::default()),
                 Box::new(PackageInfo::default()),
             ],
             pacman,
             should_exit,
+            aur_sender,
+            aur_receiver,
         })
     }
 
@@ -43,8 +50,23 @@ impl App {
 
         while !self.should_exit {
             self.render()?;
-            let actions = self.handle_events()?;
+            let mut actions = self.handle_events()?;
+
+            // Check if debounce timer elapsed for search
+            if let Some(query) = self.package_input.should_search() {
+                actions.push(Action::SearchPackage(query));
+            }
+
             self.handle_actions(&actions)?;
+
+            // Check for AUR results from background thread
+            if let Ok(aur_packages) = self.aur_receiver.try_recv() {
+                tracing::debug!(count = aur_packages.len(), "received AUR packages from background thread");
+                let event = crate::event::Event::AurPackagesFound(aur_packages);
+                for component in self.components.iter_mut() {
+                    component.update(&event)?;
+                }
+            }
         }
 
         tracing::debug!("exiting TUI mode");
@@ -57,6 +79,12 @@ impl App {
         let render_error: RefCell<Option<eyre::Report>> = RefCell::new(None);
 
         self.tui.draw(|frame| {
+            // Draw package input first
+            if let Err(e) = self.package_input.draw(frame, &frame.area()) {
+                *render_error.borrow_mut() = Some(e);
+                return;
+            }
+            // Draw other components
             for component in self.components.iter_mut() {
                 if let Err(e) = component.draw(frame, &frame.area()) {
                     *render_error.borrow_mut() = Some(e);
@@ -75,7 +103,10 @@ impl App {
     fn handle_events(&mut self) -> eyre::Result<Vec<Action>> {
         let mut actions = Vec::new();
 
-        if let Event::Key(key_event) = crossterm::event::read()? {
+        // Poll with 50ms timeout instead of blocking read
+        if crossterm::event::poll(std::time::Duration::from_millis(50))?
+            && let Event::Key(key_event) = crossterm::event::read()?
+        {
             let component_actions = self.handle_key_event(&key_event)?;
             actions.extend(component_actions);
         }
@@ -90,6 +121,12 @@ impl App {
 
         let mut actions = Vec::new();
 
+        // Handle package input
+        if let Some(component_actions) = self.package_input.handle_key_event(key_event)? {
+            actions.extend(component_actions);
+        }
+
+        // Handle other components
         for component in self.components.iter_mut() {
             let component_actions = component.handle_key_event(key_event)?;
             if let Some(component_actions) = component_actions {
@@ -123,21 +160,30 @@ impl App {
         match action {
             Action::SearchPackage(query) => {
                 tracing::debug!(query, "searching for package");
-                let mut packages = self.pacman.search_package(query)?;
+
+                // Pacman search (fast, local)
+                let packages = self.pacman.search_package(query)?;
                 tracing::debug!(count = packages.len(), "found pacman packages");
-
-                let installed = self.pacman.installed_packages();
-                match aur::search(query, &installed) {
-                    Ok(aur_packages) => {
-                        tracing::debug!(count = aur_packages.len(), "found AUR packages");
-                        packages.extend(aur_packages);
-                    }
-                    Err(e) => {
-                        tracing::warn!(%e, "AUR search failed");
-                    }
-                }
-
                 events.push(crate::event::Event::FoundPackages(packages));
+
+                // AUR search in background thread
+                let sender = self.aur_sender.clone();
+                let installed = self.pacman.installed_packages();
+                let query = query.clone();
+                std::thread::spawn(move || {
+                    tracing::debug!(query = %query, "starting AUR search in background");
+                    match aur::search(&query, &installed) {
+                        Ok(aur_packages) => {
+                            tracing::debug!(count = aur_packages.len(), query = %query, "AUR search completed");
+                            if let Err(e) = sender.send(aur_packages) {
+                                tracing::warn!(%e, "failed to send AUR results");
+                            }
+                        }
+                        Err(e) => {
+                            tracing::warn!(%e, "AUR search failed");
+                        }
+                    }
+                });
             }
             Action::InstallPackage { name, source } => {
                 tracing::info!(name, source, "installing package");

@@ -152,6 +152,11 @@ impl Component for PackagesTable {
                 self.packages = packages.clone();
                 self.reset_selection();
             }
+            Event::AurPackagesFound(aur_packages) => {
+                // Append AUR packages without resetting selection
+                tracing::debug!(count = aur_packages.len(), "merging AUR packages into list");
+                self.packages.extend(aur_packages.clone());
+            }
             Event::PackageInstalled(package_name) => {
                 if let Some(index) = self.packages.iter().position(|p| p.name == *package_name) {
                     self.packages[index].installed = true;

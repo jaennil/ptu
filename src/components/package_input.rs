@@ -1,3 +1,5 @@
+use std::time::{Duration, Instant};
+
 use color_eyre::eyre;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::layout::{Constraint, Layout, Rect};
@@ -11,10 +13,14 @@ use crate::focus::{handle_focus_keys, FocusPosition};
 use crate::layout::{INPUT_HEIGHT, LEFT_PANEL_PERCENT};
 use crate::theme::Theme;
 
+const DEBOUNCE_DURATION_MS: u64 = 300;
+
 pub(crate) struct PackageInput {
     text: String,
     theme: Theme,
     active: bool,
+    last_input: Option<Instant>,
+    pending_search: bool,
 }
 
 impl Default for PackageInput {
@@ -23,7 +29,24 @@ impl Default for PackageInput {
             text: Default::default(),
             theme: Default::default(),
             active: true,
+            last_input: None,
+            pending_search: false,
         }
+    }
+}
+
+impl PackageInput {
+    /// Check if we should trigger a search (debounce elapsed)
+    pub(crate) fn should_search(&mut self) -> Option<String> {
+        if self.pending_search
+            && let Some(last) = self.last_input
+            && last.elapsed() >= Duration::from_millis(DEBOUNCE_DURATION_MS)
+        {
+            self.pending_search = false;
+            tracing::debug!(query = %self.text, "debounce elapsed, triggering search");
+            return Some(self.text.clone());
+        }
+        None
     }
 }
 
@@ -35,7 +58,7 @@ impl Component for PackageInput {
             return Ok(None);
         }
 
-        let mut actions = Vec::new();
+        let mut text_changed = false;
 
         match *key_event {
             KeyEvent {
@@ -44,7 +67,7 @@ impl Component for PackageInput {
                 ..
             } => {
                 self.text.push(char);
-                actions.push(Action::SearchPackage(self.text.clone()));
+                text_changed = true;
             }
             KeyEvent {
                 modifiers: KeyModifiers::NONE,
@@ -52,7 +75,7 @@ impl Component for PackageInput {
                 ..
             } => {
                 self.text.pop();
-                actions.push(Action::SearchPackage(self.text.clone()));
+                text_changed = true;
             }
             KeyEvent {
                 modifiers: KeyModifiers::CONTROL,
@@ -64,12 +87,18 @@ impl Component for PackageInput {
                 } else {
                     self.text.clear();
                 }
-                actions.push(Action::SearchPackage(self.text.clone()));
+                text_changed = true;
             }
             _ => {}
         }
 
-        Ok(Some(actions))
+        if text_changed {
+            self.last_input = Some(Instant::now());
+            self.pending_search = true;
+            tracing::trace!(text = %self.text, "input changed, debounce started");
+        }
+
+        Ok(Some(Vec::new()))
     }
 
     fn draw(&mut self, frame: &mut Frame, area: &Rect) -> eyre::Result<()> {

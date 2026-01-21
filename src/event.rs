@@ -2,6 +2,7 @@ use crate::pacman::Package;
 
 pub(crate) enum Event {
     FoundPackages(Vec<Package>),
+    AurPackagesFound(Vec<Package>),
     PackageSelected(Package),
     PackageInstalled(String),
     PackageRemoved(String),
