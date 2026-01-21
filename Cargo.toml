@@ -7,7 +7,9 @@ edition = "2024"
 alpm = "5.0.1"
 color-eyre = "0.6.5"
 ratatui = "0.30.0"
+serde = { version = "1.0", features = ["derive"] }
 textwrap = "0.16.2"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing-appender = "0.2"
+ureq = { version = "3", features = ["json"] }

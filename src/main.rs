@@ -1,5 +1,6 @@
 mod action;
 mod app;
+mod aur;
 mod components;
 mod event;
 mod focus;

@@ -21,6 +21,15 @@ impl Pacman {
         Ok(Self { handle })
     }
 
+    pub(crate) fn installed_packages(&self) -> Vec<String> {
+        self.handle
+            .localdb()
+            .pkgs()
+            .iter()
+            .map(|p| p.name().to_string())
+            .collect()
+    }
+
     pub(crate) fn search_package(&self, package_name: &str) -> eyre::Result<Vec<Package>> {
         let mut packages = Vec::new();
 

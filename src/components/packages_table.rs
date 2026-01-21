@@ -101,14 +101,18 @@ impl Component for PackagesTable {
                 }
                 KeyCode::Char('i') => {
                     if let Some(package) = self.get_selected_package() {
-                        let package_name = package.name.to_string();
-                        actions.push(Action::InstallPackage(package_name));
+                        actions.push(Action::InstallPackage {
+                            name: package.name.clone(),
+                            source: package.source.clone(),
+                        });
                     }
                 }
                 KeyCode::Char('r') => {
                     if let Some(package) = self.get_selected_package() {
-                        let package_name = package.name.to_string();
-                        actions.push(Action::RemovePackage(package_name));
+                        actions.push(Action::RemovePackage {
+                            name: package.name.clone(),
+                            source: package.source.clone(),
+                        });
                     }
                 }
                 _ => {}
@@ -128,8 +132,10 @@ impl Component for PackagesTable {
                 }
                 KeyCode::Char('I') => {
                     if let Some(package) = self.get_selected_package() {
-                        let package_name = package.name.to_string();
-                        actions.push(Action::UpdateInstallPackage(package_name));
+                        actions.push(Action::UpdateInstallPackage {
+                            name: package.name.clone(),
+                            source: package.source.clone(),
+                        });
                     }
                 }
                 _ => {}
