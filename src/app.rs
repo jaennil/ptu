@@ -103,8 +103,8 @@ impl App {
     fn handle_events(&mut self) -> eyre::Result<Vec<Action>> {
         let mut actions = Vec::new();
 
-        // Poll with 50ms timeout instead of blocking read
-        if crossterm::event::poll(std::time::Duration::from_millis(50))?
+        // Poll with 16ms timeout for ~60fps responsiveness
+        if crossterm::event::poll(std::time::Duration::from_millis(16))?
             && let Event::Key(key_event) = crossterm::event::read()?
         {
             let component_actions = self.handle_key_event(&key_event)?;
@@ -168,7 +168,7 @@ impl App {
 
                 // AUR search in background thread
                 let sender = self.aur_sender.clone();
-                let installed = self.pacman.installed_packages();
+                let installed = self.pacman.installed_packages().clone();
                 let query = query.clone();
                 std::thread::spawn(move || {
                     tracing::debug!(query = %query, "starting AUR search in background");
@@ -187,69 +187,78 @@ impl App {
             }
             Action::InstallPackage { name, source } => {
                 tracing::info!(name, source, "installing package");
+                let mut success = false;
                 self.tui.suspend(|| -> eyre::Result<()> {
                     let status = if source == "aur" {
                         aur::install(name)?
                     } else {
                         pacman::install_package(name)?
                     };
-                    if status.success() {
-                        tracing::info!(name, "package installed successfully");
-                        events.push(crate::event::Event::PackageInstalled(name.clone()));
-                    } else {
-                        let error = format!("install exited with code {:?}", status.code());
-                        tracing::warn!(name, %error, "package installation failed");
-                        events.push(crate::event::Event::OperationFailed {
-                            package: name.clone(),
-                            error,
-                        });
-                    }
+                    success = status.success();
                     Ok(())
                 })?;
+                if success {
+                    tracing::info!(name, "package installed successfully");
+                    self.pacman.mark_installed(name);
+                    events.push(crate::event::Event::PackageInstalled(name.clone()));
+                } else {
+                    let error = "install failed".to_string();
+                    tracing::warn!(name, %error, "package installation failed");
+                    events.push(crate::event::Event::OperationFailed {
+                        package: name.clone(),
+                        error,
+                    });
+                }
             }
             Action::UpdateInstallPackage { name, source } => {
                 tracing::info!(name, source, "updating and installing package");
+                let mut success = false;
                 self.tui.suspend(|| -> eyre::Result<()> {
                     let status = if source == "aur" {
                         aur::install(name)?
                     } else {
                         pacman::update_install_package(name)?
                     };
-                    if status.success() {
-                        tracing::info!(name, "package updated and installed successfully");
-                        events.push(crate::event::Event::PackageInstalled(name.clone()));
-                    } else {
-                        let error = format!("update/install exited with code {:?}", status.code());
-                        tracing::warn!(name, %error, "package update/install failed");
-                        events.push(crate::event::Event::OperationFailed {
-                            package: name.clone(),
-                            error,
-                        });
-                    }
+                    success = status.success();
                     Ok(())
                 })?;
+                if success {
+                    tracing::info!(name, "package updated and installed successfully");
+                    self.pacman.mark_installed(name);
+                    events.push(crate::event::Event::PackageInstalled(name.clone()));
+                } else {
+                    let error = "update/install failed".to_string();
+                    tracing::warn!(name, %error, "package update/install failed");
+                    events.push(crate::event::Event::OperationFailed {
+                        package: name.clone(),
+                        error,
+                    });
+                }
             }
             Action::RemovePackage { name, source } => {
                 tracing::info!(name, source, "removing package");
+                let mut success = false;
                 self.tui.suspend(|| -> eyre::Result<()> {
                     let status = if source == "aur" {
                         aur::remove(name)?
                     } else {
                         pacman::remove_package(name)?
                     };
-                    if status.success() {
-                        tracing::info!(name, "package removed successfully");
-                        events.push(crate::event::Event::PackageRemoved(name.clone()));
-                    } else {
-                        let error = format!("remove exited with code {:?}", status.code());
-                        tracing::warn!(name, %error, "package removal failed");
-                        events.push(crate::event::Event::OperationFailed {
-                            package: name.clone(),
-                            error,
-                        });
-                    }
+                    success = status.success();
                     Ok(())
                 })?;
+                if success {
+                    tracing::info!(name, "package removed successfully");
+                    self.pacman.mark_removed(name);
+                    events.push(crate::event::Event::PackageRemoved(name.clone()));
+                } else {
+                    let error = "remove failed".to_string();
+                    tracing::warn!(name, %error, "package removal failed");
+                    events.push(crate::event::Event::OperationFailed {
+                        package: name.clone(),
+                        error,
+                    });
+                }
             }
             Action::SelectPackage(package) => {
                 tracing::debug!(package_name = package.name, "package selected");

@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::process::{Command, ExitStatus};
 
 use color_eyre::eyre::{self, eyre};
@@ -28,7 +29,7 @@ struct AurPackage {
     maintainer: Option<String>,
 }
 
-pub(crate) fn search(query: &str, installed_packages: &[String]) -> eyre::Result<Vec<Package>> {
+pub(crate) fn search(query: &str, installed_packages: &HashSet<String>) -> eyre::Result<Vec<Package>> {
     if query.is_empty() {
         return Ok(Vec::new());
     }

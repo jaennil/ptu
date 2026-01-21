@@ -1,5 +1,3 @@
-use std::str::FromStr as _;
-
 use color_eyre::eyre;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::layout::{Constraint, Layout, Rect};
@@ -14,6 +12,8 @@ use crate::event::Event;
 use crate::focus::{handle_focus_keys, FocusPosition};
 use crate::layout::{INPUT_HEIGHT, LEFT_PANEL_PERCENT};
 use crate::{pacman::Package, theme::Theme};
+
+const COLOR_INSTALLED: Color = Color::Rgb(0, 255, 0);
 
 #[derive(Default)]
 pub(crate) struct PackagesTable {
@@ -80,23 +80,20 @@ impl Component for PackagesTable {
             } => match code {
                 KeyCode::Char('j') => {
                     self.next();
-                    let package = self.get_selected_package();
-                    if let Some(package) = package {
-                        actions.push(Action::SelectPackage(package.clone()));
+                    if let Some(package) = self.get_selected_package() {
+                        actions.push(Action::SelectPackage(Box::new(package.clone())));
                     }
                 }
                 KeyCode::Char('k') => {
                     self.previous();
-                    let package = self.get_selected_package();
-                    if let Some(package) = package {
-                        actions.push(Action::SelectPackage(package.clone()));
+                    if let Some(package) = self.get_selected_package() {
+                        actions.push(Action::SelectPackage(Box::new(package.clone())));
                     }
                 }
                 KeyCode::Char('g') => {
                     self.state.select(Some(0));
-                    let package = self.get_selected_package();
-                    if let Some(package) = package {
-                        actions.push(Action::SelectPackage(package.clone()));
+                    if let Some(package) = self.get_selected_package() {
+                        actions.push(Action::SelectPackage(Box::new(package.clone())));
                     }
                 }
                 KeyCode::Char('i') => {
@@ -125,9 +122,8 @@ impl Component for PackagesTable {
                 KeyCode::Char('G') => {
                     let packages_amount = self.packages.len();
                     self.state.select(Some(packages_amount - 1));
-                    let package = self.get_selected_package();
-                    if let Some(package) = package {
-                        actions.push(Action::SelectPackage(package.clone()));
+                    if let Some(package) = self.get_selected_package() {
+                        actions.push(Action::SelectPackage(Box::new(package.clone())));
                     }
                 }
                 KeyCode::Char('I') => {
@@ -186,7 +182,7 @@ impl Component for PackagesTable {
             if package.installed {
                 let installed = vec![
                     Span::from("["),
-                    Span::styled("✔", Style::default().fg(Color::from_str("#00ff00")?)),
+                    Span::styled("✔", Style::default().fg(COLOR_INSTALLED)),
                     Span::from("]"),
                 ];
                 rows.push(Row::new(vec![

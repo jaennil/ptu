@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::process::{Command, ExitStatus};
 
 use alpm::{Alpm, SigLevel};
@@ -5,6 +6,7 @@ use color_eyre::eyre;
 
 pub(crate) struct Pacman {
     handle: Alpm,
+    installed_cache: HashSet<String>,
 }
 
 impl Pacman {
@@ -17,17 +19,35 @@ impl Pacman {
         handle.register_syncdb("extra", SigLevel::USE_DEFAULT)?;
         handle.register_syncdb("community", SigLevel::USE_DEFAULT)?;
 
-        tracing::debug!("pacman handle initialized successfully");
-        Ok(Self { handle })
-    }
-
-    pub(crate) fn installed_packages(&self) -> Vec<String> {
-        self.handle
+        // Cache installed packages at startup
+        let installed_cache: HashSet<String> = handle
             .localdb()
             .pkgs()
             .iter()
             .map(|p| p.name().to_string())
-            .collect()
+            .collect();
+        tracing::debug!(count = installed_cache.len(), "cached installed packages");
+
+        tracing::debug!("pacman handle initialized successfully");
+        Ok(Self {
+            handle,
+            installed_cache,
+        })
+    }
+
+    /// Returns a reference to the cached installed packages (O(1) lookup)
+    pub(crate) fn installed_packages(&self) -> &HashSet<String> {
+        &self.installed_cache
+    }
+
+    /// Mark a package as installed in cache
+    pub(crate) fn mark_installed(&mut self, name: &str) {
+        self.installed_cache.insert(name.to_string());
+    }
+
+    /// Mark a package as removed from cache
+    pub(crate) fn mark_removed(&mut self, name: &str) {
+        self.installed_cache.remove(name);
     }
 
     pub(crate) fn search_package(&self, package_name: &str) -> eyre::Result<Vec<Package>> {
@@ -35,12 +55,10 @@ impl Pacman {
 
         for db in self.handle.syncdbs() {
             for pkg in db.search([package_name].iter())? {
-                let localdb = self.handle.localdb();
-                let localpkg = localdb.pkg(pkg.name());
                 packages.push(Package {
                     name: pkg.name().to_owned(),
                     source: db.name().to_owned(),
-                    installed: localpkg.is_ok(),
+                    installed: self.installed_cache.contains(pkg.name()),
                     description: pkg.desc().unwrap_or("-").to_owned(),
                     version: pkg.version().to_string(),
                     filename: pkg.filename().unwrap_or("-").to_owned(),

@@ -5,5 +5,5 @@ pub(crate) enum Action {
     InstallPackage { name: String, source: String },
     UpdateInstallPackage { name: String, source: String },
     RemovePackage { name: String, source: String },
-    SelectPackage(Package),
+    SelectPackage(Box<Package>),
 }
