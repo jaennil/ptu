@@ -13,14 +13,14 @@ use crate::focus::{handle_focus_keys, FocusPosition};
 use crate::layout::{INPUT_HEIGHT, LEFT_PANEL_PERCENT};
 use crate::theme::Theme;
 
-const DEBOUNCE_DURATION_MS: u64 = 300;
+const AUR_DEBOUNCE_MS: u64 = 300;
 
 pub(crate) struct PackageInput {
     text: String,
     theme: Theme,
     active: bool,
     last_input: Option<Instant>,
-    pending_search: bool,
+    pending_aur_search: bool,
 }
 
 impl Default for PackageInput {
@@ -30,20 +30,20 @@ impl Default for PackageInput {
             theme: Default::default(),
             active: true,
             last_input: None,
-            pending_search: false,
+            pending_aur_search: false,
         }
     }
 }
 
 impl PackageInput {
-    /// Check if we should trigger a search (debounce elapsed)
-    pub(crate) fn should_search(&mut self) -> Option<String> {
-        if self.pending_search
+    /// Check if we should trigger AUR search (debounce elapsed)
+    pub(crate) fn should_search_aur(&mut self) -> Option<String> {
+        if self.pending_aur_search
             && let Some(last) = self.last_input
-            && last.elapsed() >= Duration::from_millis(DEBOUNCE_DURATION_MS)
+            && last.elapsed() >= Duration::from_millis(AUR_DEBOUNCE_MS)
         {
-            self.pending_search = false;
-            tracing::debug!(query = %self.text, "debounce elapsed, triggering search");
+            self.pending_aur_search = false;
+            tracing::debug!(query = %self.text, "AUR debounce elapsed, triggering AUR search");
             return Some(self.text.clone());
         }
         None
@@ -94,8 +94,10 @@ impl Component for PackageInput {
 
         if text_changed {
             self.last_input = Some(Instant::now());
-            self.pending_search = true;
-            tracing::trace!(text = %self.text, "input changed, debounce started");
+            self.pending_aur_search = true;
+            tracing::trace!(text = %self.text, "input changed, immediate pacman search");
+            // Return SearchPackage immediately for instant pacman results
+            return Ok(Some(vec![Action::SearchPackage(self.text.clone())]));
         }
 
         Ok(Some(Vec::new()))

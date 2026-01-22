@@ -51,9 +51,10 @@ impl Pacman {
     }
 
     pub(crate) fn search_package(&self, package_name: &str) -> eyre::Result<Vec<Package>> {
-        let mut packages = Vec::new();
+        const MAX_RESULTS: usize = 100;
+        let mut packages = Vec::with_capacity(MAX_RESULTS);
 
-        for db in self.handle.syncdbs() {
+        'outer: for db in self.handle.syncdbs() {
             for pkg in db.search([package_name].iter())? {
                 packages.push(Package {
                     name: pkg.name().to_owned(),
@@ -69,6 +70,10 @@ impl Pacman {
                     sha256sum: pkg.sha256sum().unwrap_or("-").to_owned(),
                     arch: pkg.arch().unwrap_or("-").to_owned(),
                 });
+                if packages.len() >= MAX_RESULTS {
+                    tracing::debug!("pacman search hit limit of {} results", MAX_RESULTS);
+                    break 'outer;
+                }
             }
         }
 

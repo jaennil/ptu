@@ -41,9 +41,11 @@ pub(crate) fn search(query: &str, installed_packages: &HashSet<String>) -> eyre:
 
     tracing::debug!(count = response.results.len(), "AUR search results");
 
+    const MAX_RESULTS: usize = 50;
     let packages = response
         .results
         .into_iter()
+        .take(MAX_RESULTS)
         .map(|pkg| Package {
             name: pkg.name.clone(),
             source: "aur".to_string(),

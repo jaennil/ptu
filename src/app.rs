@@ -50,14 +50,13 @@ impl App {
 
         while !self.should_exit {
             self.render()?;
-            let mut actions = self.handle_events()?;
-
-            // Check if debounce timer elapsed for search
-            if let Some(query) = self.package_input.should_search() {
-                actions.push(Action::SearchPackage(query));
-            }
-
+            let actions = self.handle_events()?;
             self.handle_actions(&actions)?;
+
+            // Check if AUR debounce timer elapsed
+            if let Some(query) = self.package_input.should_search_aur() {
+                self.start_aur_search(&query);
+            }
 
             // Check for AUR results from background thread
             if let Ok(aur_packages) = self.aur_receiver.try_recv() {
@@ -137,6 +136,26 @@ impl App {
         Ok(actions)
     }
 
+    fn start_aur_search(&self, query: &str) {
+        let sender = self.aur_sender.clone();
+        let installed = self.pacman.installed_packages().clone();
+        let query = query.to_string();
+        std::thread::spawn(move || {
+            tracing::debug!(query = %query, "starting AUR search in background");
+            match aur::search(&query, &installed) {
+                Ok(aur_packages) => {
+                    tracing::debug!(count = aur_packages.len(), query = %query, "AUR search completed");
+                    if let Err(e) = sender.send(aur_packages) {
+                        tracing::warn!(%e, "failed to send AUR results");
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!(%e, "AUR search failed");
+                }
+            }
+        });
+    }
+
     fn handle_actions(&mut self, actions: &[Action]) -> eyre::Result<()> {
         let mut events = Vec::new();
 
@@ -159,31 +178,12 @@ impl App {
 
         match action {
             Action::SearchPackage(query) => {
-                tracing::debug!(query, "searching for package");
+                tracing::debug!(query, "searching for package (pacman only, instant)");
 
-                // Pacman search (fast, local)
+                // Pacman search only (fast, local) - AUR is triggered separately after debounce
                 let packages = self.pacman.search_package(query)?;
                 tracing::debug!(count = packages.len(), "found pacman packages");
                 events.push(crate::event::Event::FoundPackages(packages));
-
-                // AUR search in background thread
-                let sender = self.aur_sender.clone();
-                let installed = self.pacman.installed_packages().clone();
-                let query = query.clone();
-                std::thread::spawn(move || {
-                    tracing::debug!(query = %query, "starting AUR search in background");
-                    match aur::search(&query, &installed) {
-                        Ok(aur_packages) => {
-                            tracing::debug!(count = aur_packages.len(), query = %query, "AUR search completed");
-                            if let Err(e) = sender.send(aur_packages) {
-                                tracing::warn!(%e, "failed to send AUR results");
-                            }
-                        }
-                        Err(e) => {
-                            tracing::warn!(%e, "AUR search failed");
-                        }
-                    }
-                });
             }
             Action::InstallPackage { name, source } => {
                 tracing::info!(name, source, "installing package");
