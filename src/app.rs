@@ -1,5 +1,7 @@
 use std::cell::RefCell;
-use std::sync::mpsc::{self, Receiver, Sender};
+
+use tokio::runtime::Runtime;
+use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 
 use crate::action::Action;
 use crate::aur;
@@ -19,8 +21,9 @@ pub(crate) struct App {
     components: Vec<Box<dyn Component>>,
     pacman: Pacman,
     should_exit: bool,
-    aur_sender: Sender<Vec<Package>>,
-    aur_receiver: Receiver<Vec<Package>>,
+    runtime: Runtime,
+    aur_sender: UnboundedSender<Vec<Package>>,
+    aur_receiver: UnboundedReceiver<Vec<Package>>,
 }
 
 impl App {
@@ -28,7 +31,15 @@ impl App {
         let tui = Tui::new()?;
         let should_exit = Default::default();
         let pacman = Pacman::new()?;
-        let (aur_sender, aur_receiver) = mpsc::channel();
+
+        // Create tokio runtime for async tasks
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(1)
+            .enable_all()
+            .build()?;
+        let (aur_sender, aur_receiver) = tokio::sync::mpsc::unbounded_channel();
+
+        tracing::debug!("tokio runtime created for async AUR searches");
 
         Ok(Self {
             tui,
@@ -39,6 +50,7 @@ impl App {
             ],
             pacman,
             should_exit,
+            runtime,
             aur_sender,
             aur_receiver,
         })
@@ -58,9 +70,9 @@ impl App {
                 self.start_aur_search(&query);
             }
 
-            // Check for AUR results from background thread
+            // Check for AUR results from async task
             if let Ok(aur_packages) = self.aur_receiver.try_recv() {
-                tracing::debug!(count = aur_packages.len(), "received AUR packages from background thread");
+                tracing::debug!(count = aur_packages.len(), "received AUR packages from async task");
                 let event = crate::event::Event::AurPackagesFound(aur_packages);
                 for component in self.components.iter_mut() {
                     component.update(&event)?;
@@ -140,9 +152,11 @@ impl App {
         let sender = self.aur_sender.clone();
         let installed = self.pacman.installed_packages().clone();
         let query = query.to_string();
-        std::thread::spawn(move || {
-            tracing::debug!(query = %query, "starting AUR search in background");
-            match aur::search(&query, &installed) {
+
+        // Spawn async task on tokio runtime
+        self.runtime.spawn(async move {
+            tracing::debug!(query = %query, "starting async AUR search");
+            match aur::search(&query, &installed).await {
                 Ok(aur_packages) => {
                     tracing::debug!(count = aur_packages.len(), query = %query, "AUR search completed");
                     if let Err(e) = sender.send(aur_packages) {

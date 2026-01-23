@@ -7,6 +7,7 @@ use serde::Deserialize;
 use crate::pacman::Package;
 
 const AUR_RPC_URL: &str = "https://aur.archlinux.org/rpc/v5/search";
+const MAX_RESULTS: usize = 50;
 
 #[derive(Deserialize)]
 struct AurResponse {
@@ -29,19 +30,19 @@ struct AurPackage {
     maintainer: Option<String>,
 }
 
-pub(crate) fn search(query: &str, installed_packages: &HashSet<String>) -> eyre::Result<Vec<Package>> {
+/// Async AUR search using reqwest
+pub(crate) async fn search(query: &str, installed_packages: &HashSet<String>) -> eyre::Result<Vec<Package>> {
     if query.is_empty() {
         return Ok(Vec::new());
     }
 
-    tracing::debug!(query, "searching AUR");
+    tracing::debug!(query, "searching AUR (async)");
 
     let url = format!("{}?arg={}", AUR_RPC_URL, query);
-    let response: AurResponse = ureq::get(&url).call()?.body_mut().read_json()?;
+    let response: AurResponse = reqwest::get(&url).await?.json().await?;
 
     tracing::debug!(count = response.results.len(), "AUR search results");
 
-    const MAX_RESULTS: usize = 50;
     let packages = response
         .results
         .into_iter()
