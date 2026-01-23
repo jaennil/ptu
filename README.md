@@ -2,58 +2,57 @@
 
 A Terminal User Interface (TUI) for Arch Linux's Pacman package manager, built with Rust and Ratatui.
 
-![PacTUI Screenshot](assets/preview.png)
+![PTU Screenshot](assets/preview.png)
 
 ## Features
 
-- Interactive package search with real-time results
-- Package installation, update and removal directly from the interface
+- Interactive package search with instant results
+- **AUR support** via yay/paru
+- Package installation, update and removal
 - Detailed package information display
 - Vim-like keyboard navigation
+- Async AUR search (non-blocking UI)
 
 ## Requirements
 
-- Arch Linux or an Arch-based distribution (Manjaro, EndeavourOS, etc.)
+- Arch Linux or Arch-based distribution (Manjaro, EndeavourOS, etc.)
 - Rust and Cargo
+- `yay` or `paru` (optional, for AUR support)
 
 ## Installation
 
 ### From Source
 
 ```bash
-# Clone the repository
 git clone https://github.com/jaennil/ptu.git
-cd pactui
+cd ptu
 
-# Build and install
 cargo build --release
 sudo cp target/release/ptu /usr/local/bin/
 ```
 
 ## Usage
 
-Launch the application by running:
-
 ```bash
 ptu
 ```
 
+Logs are written to `/tmp/ptu.log`.
+
 ### Keyboard Controls
 
-| Key                | Action                         |
-|--------------------|--------------------------------|
-| `Tab`              | Switch between panels          |
-| `Ctrl+j` / `Ctrl+k`| Switch between panels          |
-| `j` / `k`          | Navigate up/down in the packages list |
-| `g` / `G`          | Jump to top/bottom of the list |
-| `i`                | Install selected package       |
-| `I`                | Update and install package     |
-| `r`                | Remove selected package        |
-| `Esc`              | Exit application               |
+| Key                | Action                              |
+|--------------------|-------------------------------------|
+| `Tab`              | Switch between panels               |
+| `Ctrl+j` / `Ctrl+k`| Switch between panels               |
+| `j` / `k`          | Navigate up/down in packages list   |
+| `g` / `G`          | Jump to top/bottom of the list      |
+| `i`                | Install selected package            |
+| `I`                | Update and install package          |
+| `r`                | Remove selected package             |
+| `Esc`              | Exit application                    |
 
 ## Components
-
-The TUI consists of three main components:
 
 1. **Package Input** - Search for packages by name
 2. **Packages Table** - Displays matching packages with installation status
@@ -61,59 +60,53 @@ The TUI consists of three main components:
 
 ## Architecture
 
-PacTUI follows an event-driven architecture with:
+Event-driven architecture with async support:
 
-- Components that handle rendering and input
-- Actions that represent user intentions
-- Events that update application state
-- A main App loop that orchestrates everything
+- **Instant pacman search** - results appear immediately on keystroke
+- **Async AUR search** - non-blocking HTTP requests via tokio/reqwest
+- **Debounced AUR queries** - 300ms delay to avoid excessive API calls
+- Components handle rendering and input
+- Actions represent user intentions
+- Events update application state
 
-## Development
-
-### Project Structure
+## Project Structure
 
 ```
 src/
-├── action.rs        # User actions (search, install, etc.)
-├── app.rs           # Main application logic
-├── components/      # UI components
+├── action.rs           # User actions (search, install, etc.)
+├── app.rs              # Main application logic + tokio runtime
+├── aur.rs              # AUR API interface (async)
+├── components/
 │   ├── package_info.rs
 │   ├── package_input.rs
 │   └── packages_table.rs
-├── components.rs    # Component trait definition
-├── event.rs         # Internal events
-├── main.rs          # Application entry point
-├── pacman.rs        # Pacman interface logic
-├── panic_hook.rs    # Error handling
-├── theme.rs         # UI theme definition
-└── tui.rs           # Terminal initialization and management
-```
-
-### Building
-
-```bash
-cargo build
-```
-
-### Running in Development Mode
-
-```bash
-cargo run
+├── components.rs       # Component trait
+├── event.rs            # Internal events
+├── focus.rs            # Focus handling
+├── layout.rs           # Layout constants
+├── logging.rs          # Log configuration
+├── main.rs             # Entry point
+├── pacman.rs           # Pacman/alpm interface
+├── panic_hook.rs       # Error handling
+├── theme.rs            # UI theme
+└── tui.rs              # Terminal management
 ```
 
 ## Dependencies
 
 - `ratatui` - Terminal UI framework
-- `crossterm` - Terminal manipulation
 - `alpm` - Arch Linux Package Manager interface
+- `reqwest` - Async HTTP client (AUR)
+- `tokio` - Async runtime
 - `color-eyre` - Error handling
+- `tracing` - Logging
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+Contributions are welcome!
 
 1. Fork the repository
 2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
+3. Commit your changes
+4. Push to the branch
 5. Open a Pull Request
