@@ -60,6 +60,7 @@ pub(crate) async fn search(query: &str, installed_packages: &HashSet<String>) ->
             md5sum: "-".to_string(),
             sha256sum: "-".to_string(),
             arch: "-".to_string(),
+            size: 0, // AUR API doesn't provide size in search results
         })
         .collect();
 

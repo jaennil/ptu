@@ -69,6 +69,7 @@ impl Pacman {
                     md5sum: pkg.md5sum().unwrap_or("-").to_owned(),
                     sha256sum: pkg.sha256sum().unwrap_or("-").to_owned(),
                     arch: pkg.arch().unwrap_or("-").to_owned(),
+                    size: pkg.isize(),
                 });
                 if packages.len() >= MAX_RESULTS {
                     tracing::debug!("pacman search hit limit of {} results", MAX_RESULTS);
@@ -128,4 +129,23 @@ pub(crate) struct Package {
     pub(crate) md5sum: String,
     pub(crate) sha256sum: String,
     pub(crate) arch: String,
+    pub(crate) size: i64,
+}
+
+/// Format bytes into human-readable string (KiB, MiB, GiB)
+pub(crate) fn format_size(bytes: i64) -> String {
+    const KIB: f64 = 1024.0;
+    const MIB: f64 = KIB * 1024.0;
+    const GIB: f64 = MIB * 1024.0;
+
+    let bytes = bytes as f64;
+    if bytes >= GIB {
+        format!("{:.2} GiB", bytes / GIB)
+    } else if bytes >= MIB {
+        format!("{:.2} MiB", bytes / MIB)
+    } else if bytes >= KIB {
+        format!("{:.2} KiB", bytes / KIB)
+    } else {
+        format!("{} B", bytes as i64)
+    }
 }

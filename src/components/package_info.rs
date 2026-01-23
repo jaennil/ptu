@@ -9,7 +9,8 @@ use ratatui::{
 use textwrap::wrap;
 
 use crate::{
-    components::Component, event::Event, layout::{LABEL_WIDTH, LEFT_PANEL_PERCENT}, pacman::Package,
+    components::Component, event::Event, layout::{LABEL_WIDTH, LEFT_PANEL_PERCENT},
+    pacman::{format_size, Package},
     theme::Theme,
 };
 
@@ -41,17 +42,23 @@ impl Component for PackageInfo {
         let border_padding = 3u16;
         let value_width = area.width.saturating_sub(LABEL_WIDTH + border_padding) as usize;
 
-        let rows = [
+        let size_str = format_size(self.package.size);
+        let mut rows = vec![
             create_row("description", &self.package.description, value_width),
             create_row("version", &self.package.version, value_width),
-            create_row("filename", &self.package.filename, value_width),
-            create_row("base", &self.package.base, value_width),
+        ];
+        if self.package.size > 0 {
+            rows.push(create_row("size", &size_str, value_width));
+        }
+        rows.extend([
+            create_row("arch", &self.package.arch, value_width),
             create_row("url", &self.package.url, value_width),
             create_row("packager", &self.package.packager, value_width),
+            create_row("base", &self.package.base, value_width),
+            create_row("filename", &self.package.filename, value_width),
             create_row("md5sum", &self.package.md5sum, value_width),
             create_row("sha256sum", &self.package.sha256sum, value_width),
-            create_row("arch", &self.package.arch, value_width),
-        ];
+        ]);
         let widths = [Constraint::Length(LABEL_WIDTH), Constraint::Percentage(100)];
         let table = Table::new(rows, widths)
             .block(Block::bordered().border_style(Style::default().fg(self.theme.active)));
