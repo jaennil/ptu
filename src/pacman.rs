@@ -70,6 +70,8 @@ impl Pacman {
                     sha256sum: pkg.sha256sum().unwrap_or("-").to_owned(),
                     arch: pkg.arch().unwrap_or("-").to_owned(),
                     size: pkg.isize(),
+                    licenses: pkg.licenses().iter().map(|s| s.to_string()).collect(),
+                    depends: pkg.depends().iter().map(|d| d.name().to_string()).collect(),
                 });
                 if packages.len() >= MAX_RESULTS {
                     tracing::debug!("pacman search hit limit of {} results", MAX_RESULTS);
@@ -130,6 +132,8 @@ pub(crate) struct Package {
     pub(crate) sha256sum: String,
     pub(crate) arch: String,
     pub(crate) size: i64,
+    pub(crate) licenses: Vec<String>,
+    pub(crate) depends: Vec<String>,
 }
 
 /// Format bytes into human-readable string (KiB, MiB, GiB)

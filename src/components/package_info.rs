@@ -43,12 +43,21 @@ impl Component for PackageInfo {
         let value_width = area.width.saturating_sub(LABEL_WIDTH + border_padding) as usize;
 
         let size_str = format_size(self.package.size);
+        let licenses_str = self.package.licenses.join(", ");
+        let depends_str = self.package.depends.join(", ");
+
         let mut rows = vec![
             create_row("description", &self.package.description, value_width),
             create_row("version", &self.package.version, value_width),
         ];
         if self.package.size > 0 {
             rows.push(create_row("size", &size_str, value_width));
+        }
+        if !self.package.licenses.is_empty() {
+            rows.push(create_row("licenses", &licenses_str, value_width));
+        }
+        if !self.package.depends.is_empty() {
+            rows.push(create_row("depends", &depends_str, value_width));
         }
         rows.extend([
             create_row("arch", &self.package.arch, value_width),
