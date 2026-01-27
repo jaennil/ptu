@@ -199,9 +199,9 @@ impl Component for PackagesTable {
             }
         }
         let widths = [
-            Constraint::Length(20),
-            Constraint::Length(10),
-            Constraint::Percentage(100),
+            Constraint::Fill(1),    // name - takes remaining space
+            Constraint::Length(10), // source - fixed
+            Constraint::Length(9),  // installed - header width
         ];
         let header =
             Row::new(["name", "source", "installed"]).style(Style::new().bold().fg(Color::Magenta));
