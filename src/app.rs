@@ -197,6 +197,11 @@ impl App {
                 // Pacman search only (fast, local) - AUR is triggered separately after debounce
                 let packages = self.pacman.search_package(query)?;
                 tracing::debug!(count = packages.len(), "found pacman packages");
+
+                // Auto-select first package if available
+                if let Some(first) = packages.first() {
+                    events.push(crate::event::Event::PackageSelected(Box::new(first.clone())));
+                }
                 events.push(crate::event::Event::FoundPackages(packages));
             }
             Action::InstallPackage { name, source } => {
