@@ -45,6 +45,11 @@ impl Component for PackageInfo {
         let size_str = format_size(self.package.size);
         let licenses_str = self.package.licenses.join(", ");
         let depends_str = self.package.depends.join(", ");
+        let optdepends_str = self.package.optdepends.join(", ");
+        let groups_str = self.package.groups.join(", ");
+        let provides_str = self.package.provides.join(", ");
+        let conflicts_str = self.package.conflicts.join(", ");
+        let build_date_str = self.package.build_date.map(format_timestamp).unwrap_or_default();
         let votes_str = self.package.votes.map(|v| v.to_string()).unwrap_or_default();
         let popularity_str = self.package.popularity.map(|p| format!("{:.2}", p)).unwrap_or_default();
         let out_of_date_str = self.package.out_of_date.map(format_timestamp).unwrap_or_default();
@@ -63,6 +68,21 @@ impl Component for PackageInfo {
         }
         if !self.package.depends.is_empty() {
             rows.push(create_row("depends", &depends_str, value_width));
+        }
+        if !self.package.optdepends.is_empty() {
+            rows.push(create_row("optdepends", &optdepends_str, value_width));
+        }
+        if !self.package.groups.is_empty() {
+            rows.push(create_row("groups", &groups_str, value_width));
+        }
+        if !self.package.provides.is_empty() {
+            rows.push(create_row("provides", &provides_str, value_width));
+        }
+        if !self.package.conflicts.is_empty() {
+            rows.push(create_row("conflicts", &conflicts_str, value_width));
+        }
+        if self.package.build_date.is_some() {
+            rows.push(create_row("build date", &build_date_str, value_width));
         }
         // AUR-specific fields
         if self.package.votes.is_some() {
