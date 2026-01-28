@@ -72,6 +72,11 @@ impl Pacman {
                     size: pkg.isize(),
                     licenses: pkg.licenses().iter().map(|s| s.to_string()).collect(),
                     depends: pkg.depends().iter().map(|d| d.name().to_string()).collect(),
+                    votes: None,
+                    popularity: None,
+                    out_of_date: None,
+                    first_submitted: None,
+                    last_modified: None,
                 });
                 if packages.len() >= MAX_RESULTS {
                     tracing::debug!("pacman search hit limit of {} results", MAX_RESULTS);
@@ -134,6 +139,12 @@ pub(crate) struct Package {
     pub(crate) size: i64,
     pub(crate) licenses: Vec<String>,
     pub(crate) depends: Vec<String>,
+    // AUR-specific fields
+    pub(crate) votes: Option<i64>,
+    pub(crate) popularity: Option<f64>,
+    pub(crate) out_of_date: Option<i64>,
+    pub(crate) first_submitted: Option<i64>,
+    pub(crate) last_modified: Option<i64>,
 }
 
 /// Format bytes into human-readable string (KiB, MiB, GiB)
@@ -152,4 +163,20 @@ pub(crate) fn format_size(bytes: i64) -> String {
     } else {
         format!("{} B", bytes as i64)
     }
+}
+
+/// Format unix timestamp to human-readable date
+pub(crate) fn format_timestamp(ts: i64) -> String {
+    use std::time::{Duration, UNIX_EPOCH};
+    let datetime = UNIX_EPOCH + Duration::from_secs(ts as u64);
+    let secs = datetime.duration_since(UNIX_EPOCH).unwrap().as_secs();
+
+    // Simple date formatting (YYYY-MM-DD)
+    let days = secs / 86400;
+    let years = 1970 + days / 365;
+    let remaining_days = days % 365;
+    let month = remaining_days / 30 + 1;
+    let day = remaining_days % 30 + 1;
+
+    format!("{:04}-{:02}-{:02}", years, month.min(12), day.min(31))
 }

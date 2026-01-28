@@ -10,7 +10,7 @@ use textwrap::wrap;
 
 use crate::{
     components::Component, event::Event, layout::{LABEL_WIDTH, LEFT_PANEL_PERCENT},
-    pacman::{format_size, Package},
+    pacman::{format_size, format_timestamp, Package},
     theme::Theme,
 };
 
@@ -45,6 +45,11 @@ impl Component for PackageInfo {
         let size_str = format_size(self.package.size);
         let licenses_str = self.package.licenses.join(", ");
         let depends_str = self.package.depends.join(", ");
+        let votes_str = self.package.votes.map(|v| v.to_string()).unwrap_or_default();
+        let popularity_str = self.package.popularity.map(|p| format!("{:.2}", p)).unwrap_or_default();
+        let out_of_date_str = self.package.out_of_date.map(format_timestamp).unwrap_or_default();
+        let submitted_str = self.package.first_submitted.map(format_timestamp).unwrap_or_default();
+        let updated_str = self.package.last_modified.map(format_timestamp).unwrap_or_default();
 
         let mut rows = vec![
             create_row("description", &self.package.description, value_width),
@@ -59,15 +64,41 @@ impl Component for PackageInfo {
         if !self.package.depends.is_empty() {
             rows.push(create_row("depends", &depends_str, value_width));
         }
-        rows.extend([
-            create_row("arch", &self.package.arch, value_width),
-            create_row("url", &self.package.url, value_width),
-            create_row("packager", &self.package.packager, value_width),
-            create_row("base", &self.package.base, value_width),
-            create_row("filename", &self.package.filename, value_width),
-            create_row("md5sum", &self.package.md5sum, value_width),
-            create_row("sha256sum", &self.package.sha256sum, value_width),
-        ]);
+        // AUR-specific fields
+        if self.package.votes.is_some() {
+            rows.push(create_row("votes", &votes_str, value_width));
+        }
+        if self.package.popularity.is_some() {
+            rows.push(create_row("popularity", &popularity_str, value_width));
+        }
+        if self.package.out_of_date.is_some() {
+            rows.push(create_row("out of date", &out_of_date_str, value_width));
+        }
+        if self.package.first_submitted.is_some() {
+            rows.push(create_row("submitted", &submitted_str, value_width));
+        }
+        if self.package.last_modified.is_some() {
+            rows.push(create_row("updated", &updated_str, value_width));
+        }
+        if self.package.arch != "-" && !self.package.arch.is_empty() {
+            rows.push(create_row("arch", &self.package.arch, value_width));
+        }
+        if !self.package.url.is_empty() {
+            rows.push(create_row("url", &self.package.url, value_width));
+        }
+        rows.push(create_row("packager", &self.package.packager, value_width));
+        if self.package.base != "-" && !self.package.base.is_empty() {
+            rows.push(create_row("base", &self.package.base, value_width));
+        }
+        if self.package.filename != "-" && !self.package.filename.is_empty() {
+            rows.push(create_row("filename", &self.package.filename, value_width));
+        }
+        if self.package.md5sum != "-" && !self.package.md5sum.is_empty() {
+            rows.push(create_row("md5sum", &self.package.md5sum, value_width));
+        }
+        if self.package.sha256sum != "-" && !self.package.sha256sum.is_empty() {
+            rows.push(create_row("sha256sum", &self.package.sha256sum, value_width));
+        }
         let widths = [Constraint::Length(LABEL_WIDTH), Constraint::Percentage(100)];
         let table = Table::new(rows, widths)
             .block(Block::bordered().border_style(Style::default().fg(self.theme.active)));

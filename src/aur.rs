@@ -28,6 +28,16 @@ struct AurPackage {
     url: Option<String>,
     #[serde(rename = "Maintainer")]
     maintainer: Option<String>,
+    #[serde(rename = "NumVotes")]
+    num_votes: i64,
+    #[serde(rename = "Popularity")]
+    popularity: f64,
+    #[serde(rename = "OutOfDate")]
+    out_of_date: Option<i64>,
+    #[serde(rename = "FirstSubmitted")]
+    first_submitted: i64,
+    #[serde(rename = "LastModified")]
+    last_modified: i64,
 }
 
 /// Async AUR search using reqwest
@@ -63,6 +73,11 @@ pub(crate) async fn search(query: &str, installed_packages: &HashSet<String>) ->
             size: 0,
             licenses: Vec::new(),
             depends: Vec::new(),
+            votes: Some(pkg.num_votes),
+            popularity: Some(pkg.popularity),
+            out_of_date: pkg.out_of_date,
+            first_submitted: Some(pkg.first_submitted),
+            last_modified: Some(pkg.last_modified),
         })
         .collect();
 
