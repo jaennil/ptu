@@ -25,40 +25,33 @@ pub(crate) struct PackageInfo {
     active: bool,
     scroll_state: TableState,
     total_rows: usize,
+    total_visual_height: u16,
 }
 
-fn create_row<'a>(label: &'a str, value: &'a str, width: usize) -> Row<'a> {
+fn create_row<'a>(label: &'a str, value: &'a str, width: usize) -> (Row<'a>, u16) {
     let wrapped: Vec<String> = wrap(value, width).iter().map(|s| s.to_string()).collect();
     let height = wrapped.len().max(1) as u16;
     let wrapped_text = wrapped.join("\n");
-    Row::new(vec![
+    let row = Row::new(vec![
         Cell::new(Text::raw(label)),
         Cell::new(Text::raw(wrapped_text)),
     ])
-    .height(height)
+    .height(height);
+    (row, height)
 }
 
 impl PackageInfo {
     fn scroll_down(&mut self) {
-        let i = match self.scroll_state.selected() {
-            Some(i) => {
-                if i >= self.total_rows.saturating_sub(1) {
-                    i
-                } else {
-                    i + 1
-                }
-            }
-            None => 0,
-        };
-        self.scroll_state.select(Some(i));
+        let max_offset = self.total_rows.saturating_sub(1);
+        let current = self.scroll_state.offset();
+        if current < max_offset {
+            *self.scroll_state.offset_mut() = current + 1;
+        }
     }
 
     fn scroll_up(&mut self) {
-        let i = match self.scroll_state.selected() {
-            Some(i) => i.saturating_sub(1),
-            None => 0,
-        };
-        self.scroll_state.select(Some(i));
+        let current = self.scroll_state.offset();
+        *self.scroll_state.offset_mut() = current.saturating_sub(1);
     }
 }
 
@@ -127,71 +120,73 @@ impl Component for PackageInfo {
         let submitted_str = self.package.first_submitted.map(format_timestamp).unwrap_or_default();
         let updated_str = self.package.last_modified.map(format_timestamp).unwrap_or_default();
 
-        let mut rows = vec![
-            create_row("description", &self.package.description, value_width),
-            create_row("version", &self.package.version, value_width),
-        ];
+        let mut rows_with_heights: Vec<(Row, u16)> = Vec::new();
+
+        rows_with_heights.push(create_row("description", &self.package.description, value_width));
+        rows_with_heights.push(create_row("version", &self.package.version, value_width));
         if self.package.size > 0 {
-            rows.push(create_row("size", &size_str, value_width));
+            rows_with_heights.push(create_row("size", &size_str, value_width));
         }
         if !self.package.licenses.is_empty() {
-            rows.push(create_row("licenses", &licenses_str, value_width));
+            rows_with_heights.push(create_row("licenses", &licenses_str, value_width));
         }
         if !self.package.depends.is_empty() {
-            rows.push(create_row("depends", &depends_str, value_width));
+            rows_with_heights.push(create_row("depends", &depends_str, value_width));
         }
         if !self.package.optdepends.is_empty() {
-            rows.push(create_row("optdepends", &optdepends_str, value_width));
+            rows_with_heights.push(create_row("optdepends", &optdepends_str, value_width));
         }
         if !self.package.groups.is_empty() {
-            rows.push(create_row("groups", &groups_str, value_width));
+            rows_with_heights.push(create_row("groups", &groups_str, value_width));
         }
         if !self.package.provides.is_empty() {
-            rows.push(create_row("provides", &provides_str, value_width));
+            rows_with_heights.push(create_row("provides", &provides_str, value_width));
         }
         if !self.package.conflicts.is_empty() {
-            rows.push(create_row("conflicts", &conflicts_str, value_width));
+            rows_with_heights.push(create_row("conflicts", &conflicts_str, value_width));
         }
         if self.package.build_date.is_some() {
-            rows.push(create_row("build date", &build_date_str, value_width));
+            rows_with_heights.push(create_row("build date", &build_date_str, value_width));
         }
         // AUR-specific fields
         if self.package.votes.is_some() {
-            rows.push(create_row("votes", &votes_str, value_width));
+            rows_with_heights.push(create_row("votes", &votes_str, value_width));
         }
         if self.package.popularity.is_some() {
-            rows.push(create_row("popularity", &popularity_str, value_width));
+            rows_with_heights.push(create_row("popularity", &popularity_str, value_width));
         }
         if self.package.out_of_date.is_some() {
-            rows.push(create_row("out of date", &out_of_date_str, value_width));
+            rows_with_heights.push(create_row("out of date", &out_of_date_str, value_width));
         }
         if self.package.first_submitted.is_some() {
-            rows.push(create_row("submitted", &submitted_str, value_width));
+            rows_with_heights.push(create_row("submitted", &submitted_str, value_width));
         }
         if self.package.last_modified.is_some() {
-            rows.push(create_row("updated", &updated_str, value_width));
+            rows_with_heights.push(create_row("updated", &updated_str, value_width));
         }
         if self.package.arch != "-" && !self.package.arch.is_empty() {
-            rows.push(create_row("arch", &self.package.arch, value_width));
+            rows_with_heights.push(create_row("arch", &self.package.arch, value_width));
         }
         if !self.package.url.is_empty() {
-            rows.push(create_row("url", &self.package.url, value_width));
+            rows_with_heights.push(create_row("url", &self.package.url, value_width));
         }
-        rows.push(create_row("packager", &self.package.packager, value_width));
+        rows_with_heights.push(create_row("packager", &self.package.packager, value_width));
         if self.package.base != "-" && !self.package.base.is_empty() {
-            rows.push(create_row("base", &self.package.base, value_width));
+            rows_with_heights.push(create_row("base", &self.package.base, value_width));
         }
         if self.package.filename != "-" && !self.package.filename.is_empty() {
-            rows.push(create_row("filename", &self.package.filename, value_width));
+            rows_with_heights.push(create_row("filename", &self.package.filename, value_width));
         }
         if self.package.md5sum != "-" && !self.package.md5sum.is_empty() {
-            rows.push(create_row("md5sum", &self.package.md5sum, value_width));
+            rows_with_heights.push(create_row("md5sum", &self.package.md5sum, value_width));
         }
         if self.package.sha256sum != "-" && !self.package.sha256sum.is_empty() {
-            rows.push(create_row("sha256sum", &self.package.sha256sum, value_width));
+            rows_with_heights.push(create_row("sha256sum", &self.package.sha256sum, value_width));
         }
 
-        self.total_rows = rows.len();
+        self.total_rows = rows_with_heights.len();
+        self.total_visual_height = rows_with_heights.iter().map(|(_, h)| h).sum();
+        let rows: Vec<Row> = rows_with_heights.into_iter().map(|(r, _)| r).collect();
 
         let border_color = if self.active {
             self.theme.active
@@ -207,13 +202,13 @@ impl Component for PackageInfo {
         frame.render_stateful_widget(table, area, &mut self.scroll_state);
 
         // Render scrollbar only if content exceeds visible area
-        let visible_height = area.height.saturating_sub(2) as usize; // subtract borders
-        if self.total_rows > visible_height {
+        let visible_height = area.height.saturating_sub(2); // subtract borders
+        if self.total_visual_height > visible_height {
             let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
                 .begin_symbol(Some("↑"))
                 .end_symbol(Some("↓"));
             let mut scrollbar_state = ScrollbarState::new(self.total_rows)
-                .position(self.scroll_state.selected().unwrap_or(0));
+                .position(self.scroll_state.offset());
             frame.render_stateful_widget(
                 scrollbar,
                 area.inner(ratatui::layout::Margin { vertical: 1, horizontal: 0 }),
@@ -227,7 +222,7 @@ impl Component for PackageInfo {
     fn update(&mut self, event: &Event) -> eyre::Result<()> {
         if let Event::PackageSelected(package) = event {
             self.package = (**package).clone();
-            self.scroll_state.select(Some(0)); // Reset scroll on new package
+            *self.scroll_state.offset_mut() = 0; // Reset scroll on new package
         }
 
         Ok(())
