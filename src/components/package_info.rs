@@ -1,6 +1,6 @@
 use color_eyre::eyre;
 use ratatui::{
-    crossterm::event::{KeyCode, KeyEvent, KeyModifiers},
+    crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseEvent, MouseEventKind},
     layout::{Constraint, Layout, Rect},
     style::Style,
     text::Text,
@@ -232,5 +232,30 @@ impl Component for PackageInfo {
 
     fn set_active(&mut self, active: bool) {
         self.active = active;
+    }
+
+    fn handle_mouse_event(
+        &mut self,
+        mouse_event: &MouseEvent,
+        area: &Rect,
+    ) -> eyre::Result<Option<Vec<Action>>> {
+        let (x, y) = (mouse_event.column, mouse_event.row);
+        if !area.contains((x, y).into()) {
+            return Ok(None);
+        }
+
+        match mouse_event.kind {
+            MouseEventKind::ScrollUp => {
+                tracing::trace!("package info scroll up");
+                self.scroll_up();
+            }
+            MouseEventKind::ScrollDown => {
+                tracing::trace!("package info scroll down");
+                self.scroll_down();
+            }
+            _ => {}
+        }
+
+        Ok(None)
     }
 }

@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use color_eyre::eyre;
-use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseEvent, MouseEventKind};
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
@@ -297,5 +297,38 @@ impl Component for PackagesTable {
 
     fn set_active(&mut self, active: bool) {
         self.active = active;
+    }
+
+    fn handle_mouse_event(
+        &mut self,
+        mouse_event: &MouseEvent,
+        area: &Rect,
+    ) -> eyre::Result<Option<Vec<Action>>> {
+        let (x, y) = (mouse_event.column, mouse_event.row);
+        if !area.contains((x, y).into()) {
+            return Ok(None);
+        }
+
+        let mut actions = Vec::new();
+
+        match mouse_event.kind {
+            MouseEventKind::ScrollUp => {
+                tracing::trace!("packages table scroll up");
+                self.previous();
+                if let Some(package) = self.get_selected_package() {
+                    actions.push(Action::SelectPackage(Box::new(package.clone())));
+                }
+            }
+            MouseEventKind::ScrollDown => {
+                tracing::trace!("packages table scroll down");
+                self.next();
+                if let Some(package) = self.get_selected_package() {
+                    actions.push(Action::SelectPackage(Box::new(package.clone())));
+                }
+            }
+            _ => {}
+        }
+
+        Ok(Some(actions))
     }
 }

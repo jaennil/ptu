@@ -6,13 +6,23 @@ use crate::action::Action;
 use crate::event::Event;
 
 use color_eyre::eyre;
-use ratatui::crossterm::event::KeyEvent;
+use ratatui::crossterm::event::{KeyEvent, MouseEvent};
 use ratatui::layout::Rect;
 use ratatui::Frame;
 
 pub(crate) trait Component {
     fn handle_key_event(&mut self, key_event: &KeyEvent) -> eyre::Result<Option<Vec<Action>>> {
         let _ = key_event;
+        Ok(None)
+    }
+
+    fn handle_mouse_event(
+        &mut self,
+        mouse_event: &MouseEvent,
+        area: &Rect,
+    ) -> eyre::Result<Option<Vec<Action>>> {
+        let _ = mouse_event;
+        let _ = area;
         Ok(None)
     }
 

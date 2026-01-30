@@ -4,7 +4,7 @@ use std::{
 };
 
 use color_eyre::eyre;
-use ratatui::crossterm::{self, terminal};
+use ratatui::crossterm::{self, event, terminal};
 
 type Terminal = ratatui::Terminal<ratatui::backend::CrosstermBackend<std::io::Stdout>>;
 
@@ -22,13 +22,23 @@ impl Tui {
 
     pub(crate) fn enter() -> eyre::Result<()> {
         terminal::enable_raw_mode()?;
-        crossterm::execute!(io::stdout(), terminal::EnterAlternateScreen)?;
+        crossterm::execute!(
+            io::stdout(),
+            terminal::EnterAlternateScreen,
+            event::EnableMouseCapture
+        )?;
+        tracing::debug!("mouse capture enabled");
         Ok(())
     }
 
     pub(crate) fn exit() -> eyre::Result<()> {
         terminal::disable_raw_mode()?;
-        crossterm::execute!(io::stdout(), terminal::LeaveAlternateScreen)?;
+        crossterm::execute!(
+            io::stdout(),
+            terminal::LeaveAlternateScreen,
+            event::DisableMouseCapture
+        )?;
+        tracing::debug!("mouse capture disabled");
         Ok(())
     }
 

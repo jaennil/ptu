@@ -8,12 +8,14 @@ use crate::aur;
 use crate::components::package_info::PackageInfo;
 use crate::components::packages_table::PackagesTable;
 use crate::components::{package_input::PackageInput, Component};
+use crate::layout::{INPUT_HEIGHT, LEFT_PANEL_PERCENT};
 use crate::pacman::{self, Package, Pacman};
 use crate::tui::Tui;
 
 use color_eyre::eyre;
 use ratatui::crossterm;
-use ratatui::crossterm::event::{Event, KeyCode, KeyEvent};
+use ratatui::crossterm::event::{Event, KeyCode, KeyEvent, MouseEvent, MouseEventKind};
+use ratatui::layout::{Constraint, Layout, Rect};
 
 const NUM_COMPONENTS: usize = 3; // package_input, packages_table, package_info
 
@@ -27,6 +29,8 @@ pub(crate) struct App {
     aur_sender: UnboundedSender<Vec<Package>>,
     aur_receiver: UnboundedReceiver<Vec<Package>>,
     focused: usize, // 0 = package_input, 1 = packages_table, 2 = package_info
+    packages_table_area: Rect,
+    package_info_area: Rect,
 }
 
 impl App {
@@ -66,6 +70,8 @@ impl App {
             aur_sender,
             aur_receiver,
             focused: 0,
+            packages_table_area: Rect::default(),
+            package_info_area: Rect::default(),
         })
     }
 
@@ -103,10 +109,21 @@ impl App {
         tracing::debug!("entering TUI mode");
         Tui::enter()?;
 
+        let mut needs_render = true;
+
         while !self.should_exit {
-            self.render()?;
-            let actions = self.handle_events()?;
-            self.handle_actions(&actions)?;
+            if needs_render {
+                self.render()?;
+                needs_render = false;
+            }
+
+            let (actions, event_needs_render) = self.handle_events()?;
+            needs_render |= event_needs_render;
+
+            if !actions.is_empty() {
+                self.handle_actions(&actions)?;
+                needs_render = true;
+            }
 
             // Check if AUR debounce timer elapsed
             if let Some(query) = self.package_input.should_search_aur() {
@@ -120,6 +137,7 @@ impl App {
                 for component in self.components.iter_mut() {
                     component.update(&event)?;
                 }
+                needs_render = true;
             }
         }
 
@@ -131,21 +149,44 @@ impl App {
 
     fn render(&mut self) -> eyre::Result<()> {
         let render_error: RefCell<Option<eyre::Report>> = RefCell::new(None);
+        let packages_table_area: RefCell<Rect> = RefCell::new(Rect::default());
+        let package_info_area: RefCell<Rect> = RefCell::new(Rect::default());
 
         self.tui.draw(|frame| {
+            let area = frame.area();
+
+            // Compute component areas for mouse event routing
+            let horizontal = Layout::horizontal([
+                Constraint::Percentage(LEFT_PANEL_PERCENT),
+                Constraint::Percentage(100 - LEFT_PANEL_PERCENT),
+            ])
+            .split(area);
+
+            let left_vertical = Layout::vertical([
+                Constraint::Length(INPUT_HEIGHT),
+                Constraint::Percentage(100),
+            ])
+            .split(horizontal[0]);
+
+            *packages_table_area.borrow_mut() = left_vertical[1];
+            *package_info_area.borrow_mut() = horizontal[1];
+
             // Draw package input first
-            if let Err(e) = self.package_input.draw(frame, &frame.area()) {
+            if let Err(e) = self.package_input.draw(frame, &area) {
                 *render_error.borrow_mut() = Some(e);
                 return;
             }
             // Draw other components
             for component in self.components.iter_mut() {
-                if let Err(e) = component.draw(frame, &frame.area()) {
+                if let Err(e) = component.draw(frame, &area) {
                     *render_error.borrow_mut() = Some(e);
                     return;
                 }
             }
         })?;
+
+        self.packages_table_area = packages_table_area.into_inner();
+        self.package_info_area = package_info_area.into_inner();
 
         if let Some(e) = render_error.into_inner() {
             return Err(e);
@@ -154,18 +195,34 @@ impl App {
         Ok(())
     }
 
-    fn handle_events(&mut self) -> eyre::Result<Vec<Action>> {
+    fn handle_events(&mut self) -> eyre::Result<(Vec<Action>, bool)> {
         let mut actions = Vec::new();
+        let mut needs_render = false;
 
         // Poll with 16ms timeout for ~60fps responsiveness
-        if crossterm::event::poll(std::time::Duration::from_millis(16))?
-            && let Event::Key(key_event) = crossterm::event::read()?
-        {
-            let component_actions = self.handle_key_event(&key_event)?;
-            actions.extend(component_actions);
+        if crossterm::event::poll(std::time::Duration::from_millis(16))? {
+            match crossterm::event::read()? {
+                Event::Key(key_event) => {
+                    let component_actions = self.handle_key_event(&key_event)?;
+                    actions.extend(component_actions);
+                    needs_render = true;
+                }
+                Event::Mouse(mouse_event) => {
+                    // Only process scroll events, ignore MouseMove etc.
+                    if matches!(
+                        mouse_event.kind,
+                        MouseEventKind::ScrollUp | MouseEventKind::ScrollDown
+                    ) {
+                        let component_actions = self.handle_mouse_event(&mouse_event)?;
+                        actions.extend(component_actions);
+                        needs_render = true;
+                    }
+                }
+                _ => {}
+            }
         }
 
-        Ok(actions)
+        Ok((actions, needs_render))
     }
 
     fn handle_key_event(&mut self, key_event: &KeyEvent) -> eyre::Result<Vec<Action>> {
@@ -225,6 +282,37 @@ impl App {
                     actions.extend(component_actions);
                 }
             }
+        }
+
+        Ok(actions)
+    }
+
+    fn handle_mouse_event(&mut self, mouse_event: &MouseEvent) -> eyre::Result<Vec<Action>> {
+        let mut actions = Vec::new();
+
+        // Only handle scroll events
+        match mouse_event.kind {
+            MouseEventKind::ScrollUp | MouseEventKind::ScrollDown => {
+                let (x, y) = (mouse_event.column, mouse_event.row);
+
+                // Route to component based on cursor position
+                if self.packages_table_area.contains((x, y).into()) {
+                    tracing::trace!(x, y, "mouse scroll on packages table");
+                    if let Some(component_actions) =
+                        self.components[0].handle_mouse_event(mouse_event, &self.packages_table_area)?
+                    {
+                        actions.extend(component_actions);
+                    }
+                } else if self.package_info_area.contains((x, y).into()) {
+                    tracing::trace!(x, y, "mouse scroll on package info");
+                    if let Some(component_actions) =
+                        self.components[1].handle_mouse_event(mouse_event, &self.package_info_area)?
+                    {
+                        actions.extend(component_actions);
+                    }
+                }
+            }
+            _ => {}
         }
 
         Ok(actions)
