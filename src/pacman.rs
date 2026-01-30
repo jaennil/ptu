@@ -127,6 +127,28 @@ pub(crate) fn update_install_package(package_name: &str) -> eyre::Result<ExitSta
     Ok(status)
 }
 
+pub(crate) fn install_packages(names: &[&str]) -> eyre::Result<ExitStatus> {
+    tracing::debug!(?names, "executing pacman -S for multiple packages");
+    let status = Command::new("sudo")
+        .arg("pacman")
+        .arg("-S")
+        .args(names)
+        .status()?;
+    tracing::debug!(?names, code = ?status.code(), "pacman -S batch completed");
+    Ok(status)
+}
+
+pub(crate) fn remove_packages(names: &[&str]) -> eyre::Result<ExitStatus> {
+    tracing::debug!(?names, "executing pacman -R for multiple packages");
+    let status = Command::new("sudo")
+        .arg("pacman")
+        .arg("-R")
+        .args(names)
+        .status()?;
+    tracing::debug!(?names, code = ?status.code(), "pacman -R batch completed");
+    Ok(status)
+}
+
 #[derive(Clone, Default)]
 pub(crate) struct Package {
     pub(crate) name: String,

@@ -6,5 +6,7 @@ pub(crate) enum Event {
     PackageSelected(Box<Package>),
     PackageInstalled(String),
     PackageRemoved(String),
+    PackagesInstalled(Vec<String>),
+    PackagesRemoved(Vec<String>),
     OperationFailed { package: String, error: String },
 }

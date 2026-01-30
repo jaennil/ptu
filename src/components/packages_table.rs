@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use color_eyre::eyre;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::layout::{Constraint, Layout, Rect};
@@ -13,6 +15,7 @@ use crate::layout::{INPUT_HEIGHT, LEFT_PANEL_PERCENT};
 use crate::{pacman::Package, theme::Theme};
 
 const COLOR_INSTALLED: Color = Color::Rgb(0, 255, 0);
+const COLOR_SELECTED: Color = Color::Rgb(255, 165, 0); // Orange
 
 #[derive(Default)]
 pub(crate) struct PackagesTable {
@@ -20,6 +23,7 @@ pub(crate) struct PackagesTable {
     packages: Vec<Package>,
     theme: Theme,
     active: bool,
+    selected_indices: HashSet<usize>,
 }
 
 impl PackagesTable {
@@ -58,6 +62,34 @@ impl PackagesTable {
 
     fn reset_selection(&mut self) {
         self.state.select(Some(0));
+    }
+
+    fn toggle_selection(&mut self) {
+        if let Some(index) = self.state.selected() {
+            if self.selected_indices.contains(&index) {
+                tracing::debug!(index, "deselecting package");
+                self.selected_indices.remove(&index);
+            } else {
+                tracing::debug!(index, "selecting package");
+                self.selected_indices.insert(index);
+            }
+        }
+    }
+
+    fn clear_selection(&mut self) {
+        if !self.selected_indices.is_empty() {
+            tracing::debug!(count = self.selected_indices.len(), "clearing selection");
+            self.selected_indices.clear();
+        }
+    }
+
+    fn get_selected_packages(&self) -> Vec<(String, String)> {
+        self.selected_indices
+            .iter()
+            .filter_map(|&idx| {
+                self.packages.get(idx).map(|p| (p.name.clone(), p.source.clone()))
+            })
+            .collect()
     }
 }
 
@@ -109,6 +141,9 @@ impl Component for PackagesTable {
                         });
                     }
                 }
+                KeyCode::Char(' ') => {
+                    self.toggle_selection();
+                }
                 _ => {}
             },
             KeyEvent {
@@ -124,8 +159,26 @@ impl Component for PackagesTable {
                     }
                 }
                 KeyCode::Char('I') => {
-                    if let Some(package) = self.get_selected_package() {
+                    let selected = self.get_selected_packages();
+                    if !selected.is_empty() {
+                        tracing::info!(count = selected.len(), "batch install selected packages");
+                        actions.push(Action::InstallPackages { packages: selected });
+                    } else if let Some(package) = self.get_selected_package() {
+                        // Fallback to single update+install when no selection
                         actions.push(Action::UpdateInstallPackage {
+                            name: package.name.clone(),
+                            source: package.source.clone(),
+                        });
+                    }
+                }
+                KeyCode::Char('R') => {
+                    let selected = self.get_selected_packages();
+                    if !selected.is_empty() {
+                        tracing::info!(count = selected.len(), "batch remove selected packages");
+                        actions.push(Action::RemovePackages { packages: selected });
+                    } else if let Some(package) = self.get_selected_package() {
+                        // Fallback to single remove when no selection
+                        actions.push(Action::RemovePackage {
                             name: package.name.clone(),
                             source: package.source.clone(),
                         });
@@ -144,6 +197,7 @@ impl Component for PackagesTable {
             Event::FoundPackages(packages) => {
                 self.packages = packages.clone();
                 self.reset_selection();
+                self.clear_selection(); // Clear selection on new search (indices invalidate)
             }
             Event::AurPackagesFound(aur_packages) => {
                 // Append AUR packages without resetting selection
@@ -160,6 +214,24 @@ impl Component for PackagesTable {
                     self.packages[index].installed = false;
                 }
             }
+            Event::PackagesInstalled(names) => {
+                tracing::debug!(count = names.len(), "marking packages as installed");
+                for name in names {
+                    if let Some(index) = self.packages.iter().position(|p| &p.name == name) {
+                        self.packages[index].installed = true;
+                    }
+                }
+                self.clear_selection();
+            }
+            Event::PackagesRemoved(names) => {
+                tracing::debug!(count = names.len(), "marking packages as removed");
+                for name in names {
+                    if let Some(index) = self.packages.iter().position(|p| &p.name == name) {
+                        self.packages[index].installed = false;
+                    }
+                }
+                self.clear_selection();
+            }
             _ => {}
         }
 
@@ -175,25 +247,33 @@ impl Component for PackagesTable {
         let area = Layout::vertical([Constraint::Length(INPUT_HEIGHT), Constraint::Percentage(100)])
             .split(horizontal_layout)[1];
         let mut rows = Vec::new();
-        for package in &self.packages {
-            if package.installed {
-                let installed = vec![
+        for (idx, package) in self.packages.iter().enumerate() {
+            let is_selected = self.selected_indices.contains(&idx);
+            let selection_marker = if is_selected {
+                Span::styled("*", Style::default().fg(COLOR_SELECTED))
+            } else {
+                Span::from(" ")
+            };
+
+            let status_cell = if package.installed {
+                Line::from(vec![
+                    selection_marker,
                     Span::from("["),
                     Span::styled("✔", Style::default().fg(COLOR_INSTALLED)),
                     Span::from("]"),
-                ];
-                rows.push(Row::new(vec![
-                    Cell::from(package.name.clone()),
-                    Cell::from(package.source.clone()),
-                    Cell::from(Line::from(installed)),
-                ]));
+                ])
             } else {
-                rows.push(Row::new(vec![
-                    package.name.clone(),
-                    package.source.clone(),
-                    "[ ]".to_string(),
-                ]));
-            }
+                Line::from(vec![
+                    selection_marker,
+                    Span::from("[ ]"),
+                ])
+            };
+
+            rows.push(Row::new(vec![
+                Cell::from(package.name.clone()),
+                Cell::from(package.source.clone()),
+                Cell::from(status_cell),
+            ]));
         }
         let widths = [
             Constraint::Fill(1),    // name - takes remaining space

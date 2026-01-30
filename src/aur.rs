@@ -109,6 +109,26 @@ pub(crate) fn remove(package_name: &str) -> eyre::Result<ExitStatus> {
     Ok(status)
 }
 
+pub(crate) fn install_packages(names: &[&str]) -> eyre::Result<ExitStatus> {
+    let helper = find_aur_helper()?;
+    tracing::info!(?names, helper = %helper, "installing multiple AUR packages");
+
+    let status = Command::new(&helper).arg("-S").args(names).status()?;
+
+    tracing::debug!(?names, code = ?status.code(), "AUR batch install completed");
+    Ok(status)
+}
+
+pub(crate) fn remove_packages(names: &[&str]) -> eyre::Result<ExitStatus> {
+    let helper = find_aur_helper()?;
+    tracing::info!(?names, helper = %helper, "removing multiple AUR packages");
+
+    let status = Command::new(&helper).arg("-R").args(names).status()?;
+
+    tracing::debug!(?names, code = ?status.code(), "AUR batch remove completed");
+    Ok(status)
+}
+
 fn find_aur_helper() -> eyre::Result<String> {
     for helper in ["yay", "paru"] {
         if Command::new("which")

@@ -365,6 +365,108 @@ impl App {
                 tracing::debug!(package_name = package.name, "package selected");
                 events.push(crate::event::Event::PackageSelected(package.clone()));
             }
+            Action::InstallPackages { packages } => {
+                tracing::info!(count = packages.len(), "batch installing packages");
+
+                // Separate by source
+                let pacman_pkgs: Vec<&str> = packages
+                    .iter()
+                    .filter(|(_, src)| src != "aur")
+                    .map(|(name, _)| name.as_str())
+                    .collect();
+                let aur_pkgs: Vec<&str> = packages
+                    .iter()
+                    .filter(|(_, src)| src == "aur")
+                    .map(|(name, _)| name.as_str())
+                    .collect();
+
+                let mut installed_names = Vec::new();
+
+                self.tui.suspend(|| -> eyre::Result<()> {
+                    // Install pacman packages first
+                    if !pacman_pkgs.is_empty() {
+                        tracing::info!(count = pacman_pkgs.len(), "installing pacman packages");
+                        let status = pacman::install_packages(&pacman_pkgs)?;
+                        if status.success() {
+                            installed_names.extend(pacman_pkgs.iter().map(|s| s.to_string()));
+                        } else {
+                            tracing::warn!("pacman batch install failed");
+                        }
+                    }
+
+                    // Install AUR packages
+                    if !aur_pkgs.is_empty() {
+                        tracing::info!(count = aur_pkgs.len(), "installing AUR packages");
+                        let status = aur::install_packages(&aur_pkgs)?;
+                        if status.success() {
+                            installed_names.extend(aur_pkgs.iter().map(|s| s.to_string()));
+                        } else {
+                            tracing::warn!("AUR batch install failed");
+                        }
+                    }
+
+                    Ok(())
+                })?;
+
+                if !installed_names.is_empty() {
+                    tracing::info!(count = installed_names.len(), "packages installed successfully");
+                    for name in &installed_names {
+                        self.pacman.mark_installed(name);
+                    }
+                    events.push(crate::event::Event::PackagesInstalled(installed_names));
+                }
+            }
+            Action::RemovePackages { packages } => {
+                tracing::info!(count = packages.len(), "batch removing packages");
+
+                // Separate by source
+                let pacman_pkgs: Vec<&str> = packages
+                    .iter()
+                    .filter(|(_, src)| src != "aur")
+                    .map(|(name, _)| name.as_str())
+                    .collect();
+                let aur_pkgs: Vec<&str> = packages
+                    .iter()
+                    .filter(|(_, src)| src == "aur")
+                    .map(|(name, _)| name.as_str())
+                    .collect();
+
+                let mut removed_names = Vec::new();
+
+                self.tui.suspend(|| -> eyre::Result<()> {
+                    // Remove pacman packages first
+                    if !pacman_pkgs.is_empty() {
+                        tracing::info!(count = pacman_pkgs.len(), "removing pacman packages");
+                        let status = pacman::remove_packages(&pacman_pkgs)?;
+                        if status.success() {
+                            removed_names.extend(pacman_pkgs.iter().map(|s| s.to_string()));
+                        } else {
+                            tracing::warn!("pacman batch remove failed");
+                        }
+                    }
+
+                    // Remove AUR packages
+                    if !aur_pkgs.is_empty() {
+                        tracing::info!(count = aur_pkgs.len(), "removing AUR packages");
+                        let status = aur::remove_packages(&aur_pkgs)?;
+                        if status.success() {
+                            removed_names.extend(aur_pkgs.iter().map(|s| s.to_string()));
+                        } else {
+                            tracing::warn!("AUR batch remove failed");
+                        }
+                    }
+
+                    Ok(())
+                })?;
+
+                if !removed_names.is_empty() {
+                    tracing::info!(count = removed_names.len(), "packages removed successfully");
+                    for name in &removed_names {
+                        self.pacman.mark_removed(name);
+                    }
+                    events.push(crate::event::Event::PackagesRemoved(removed_names));
+                }
+            }
         };
 
         Ok(events)
