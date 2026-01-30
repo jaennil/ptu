@@ -9,7 +9,6 @@ use ratatui::Frame;
 use crate::action::Action;
 use crate::components::Component;
 use crate::event::Event;
-use crate::focus::{handle_focus_keys, FocusPosition};
 use crate::layout::{INPUT_HEIGHT, LEFT_PANEL_PERCENT};
 use crate::{pacman::Package, theme::Theme};
 
@@ -64,8 +63,6 @@ impl PackagesTable {
 
 impl Component for PackagesTable {
     fn handle_key_event(&mut self, key_event: &KeyEvent) -> eyre::Result<Option<Vec<Action>>> {
-        handle_focus_keys(key_event, &mut self.active, FocusPosition::Bottom);
-
         if !self.active {
             return Ok(None);
         }
@@ -216,5 +213,9 @@ impl Component for PackagesTable {
             .row_highlight_style(Style::new().add_modifier(Modifier::REVERSED));
         frame.render_stateful_widget(output, area, &mut self.state);
         Ok(())
+    }
+
+    fn set_active(&mut self, active: bool) {
+        self.active = active;
     }
 }

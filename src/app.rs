@@ -15,6 +15,8 @@ use color_eyre::eyre;
 use ratatui::crossterm;
 use ratatui::crossterm::event::{Event, KeyCode, KeyEvent};
 
+const NUM_COMPONENTS: usize = 3; // package_input, packages_table, package_info
+
 pub(crate) struct App {
     tui: Tui,
     package_input: PackageInput,
@@ -24,6 +26,7 @@ pub(crate) struct App {
     runtime: Runtime,
     aur_sender: UnboundedSender<Vec<Package>>,
     aur_receiver: UnboundedReceiver<Vec<Package>>,
+    focused: usize, // 0 = package_input, 1 = packages_table, 2 = package_info
 }
 
 impl App {
@@ -41,19 +44,59 @@ impl App {
 
         tracing::debug!("tokio runtime created for async AUR searches");
 
+        let mut package_input = PackageInput::default();
+        package_input.set_active(true); // Start with focus on input
+
+        let mut packages_table = PackagesTable::default();
+        packages_table.set_active(false);
+
+        let mut package_info = PackageInfo::default();
+        package_info.set_active(false);
+
         Ok(Self {
             tui,
-            package_input: PackageInput::default(),
+            package_input,
             components: vec![
-                Box::new(PackagesTable::default()),
-                Box::new(PackageInfo::default()),
+                Box::new(packages_table),
+                Box::new(package_info),
             ],
             pacman,
             should_exit,
             runtime,
             aur_sender,
             aur_receiver,
+            focused: 0,
         })
+    }
+
+    fn set_focus(&mut self, new_focus: usize) {
+        tracing::debug!(current = self.focused, new = new_focus, "set_focus called");
+
+        if new_focus == self.focused || new_focus >= NUM_COMPONENTS {
+            tracing::debug!("set_focus: no change needed");
+            return;
+        }
+
+        // Deactivate current
+        match self.focused {
+            0 => self.package_input.set_active(false),
+            n => self.components[n - 1].set_active(false),
+        }
+
+        self.focused = new_focus;
+
+        // Activate new
+        match self.focused {
+            0 => self.package_input.set_active(true),
+            n => self.components[n - 1].set_active(true),
+        }
+
+        tracing::info!(focused = self.focused, "focus changed");
+    }
+
+    fn cycle_focus(&mut self) {
+        let new_focus = (self.focused + 1) % NUM_COMPONENTS;
+        self.set_focus(new_focus);
     }
 
     pub(crate) fn run(&mut self) -> eyre::Result<()> {
@@ -130,18 +173,57 @@ impl App {
             self.should_exit = true;
         }
 
-        let mut actions = Vec::new();
-
-        // Handle package input
-        if let Some(component_actions) = self.package_input.handle_key_event(key_event)? {
-            actions.extend(component_actions);
+        // Handle focus switching
+        use ratatui::crossterm::event::KeyModifiers;
+        match (key_event.code, key_event.modifiers) {
+            (KeyCode::Tab, KeyModifiers::NONE) => {
+                self.cycle_focus();
+                return Ok(Vec::new());
+            }
+            // Alt+j - focus down (input -> packages)
+            (KeyCode::Char('j'), KeyModifiers::ALT) => {
+                if self.focused < 1 {
+                    self.set_focus(1);
+                }
+                return Ok(Vec::new());
+            }
+            // Alt+k - focus up (packages -> input, info -> input)
+            (KeyCode::Char('k'), KeyModifiers::ALT) => {
+                if self.focused > 0 {
+                    self.set_focus(0);
+                }
+                return Ok(Vec::new());
+            }
+            // Alt+l - focus right (to info panel)
+            (KeyCode::Char('l'), KeyModifiers::ALT) => {
+                if self.focused != 2 {
+                    self.set_focus(2);
+                }
+                return Ok(Vec::new());
+            }
+            // Alt+h - focus left (from info to packages)
+            (KeyCode::Char('h'), KeyModifiers::ALT) => {
+                if self.focused == 2 {
+                    self.set_focus(1);
+                }
+                return Ok(Vec::new());
+            }
+            _ => {}
         }
 
-        // Handle other components
-        for component in self.components.iter_mut() {
-            let component_actions = component.handle_key_event(key_event)?;
-            if let Some(component_actions) = component_actions {
-                actions.extend(component_actions);
+        let mut actions = Vec::new();
+
+        // Only send key events to the focused component
+        match self.focused {
+            0 => {
+                if let Some(component_actions) = self.package_input.handle_key_event(key_event)? {
+                    actions.extend(component_actions);
+                }
+            }
+            n => {
+                if let Some(component_actions) = self.components[n - 1].handle_key_event(key_event)? {
+                    actions.extend(component_actions);
+                }
             }
         }
 

@@ -43,9 +43,13 @@ Logs are written to `/tmp/ptu.log`.
 
 | Key                | Action                              |
 |--------------------|-------------------------------------|
-| `Tab`              | Switch between panels               |
-| `Ctrl+j` / `Ctrl+k`| Switch between panels               |
-| `j` / `k`          | Navigate up/down in packages list   |
+| `Tab`              | Cycle between panels                |
+| `Alt+j`            | Focus packages table                |
+| `Alt+k`            | Focus search input                  |
+| `Alt+l`            | Focus package info                  |
+| `Alt+h`            | Focus packages table (from info)    |
+| `j` / `k`          | Navigate up/down (table) or scroll (info) |
+| `Ctrl+d` / `Ctrl+u`| Page down/up in package info        |
 | `g` / `G`          | Jump to top/bottom of the list      |
 | `i`                | Install selected package            |
 | `I`                | Update and install package          |
@@ -56,7 +60,7 @@ Logs are written to `/tmp/ptu.log`.
 
 1. **Package Input** - Search for packages by name
 2. **Packages Table** - Displays matching packages with installation status
-3. **Package Info** - Shows detailed information about the selected package
+3. **Package Info** - Shows detailed information about the selected package (scrollable)
 
 ## Architecture
 
@@ -74,15 +78,14 @@ Event-driven architecture with async support:
 ```
 src/
 ├── action.rs           # User actions (search, install, etc.)
-├── app.rs              # Main application logic + tokio runtime
+├── app.rs              # Main application logic + focus management + tokio runtime
 ├── aur.rs              # AUR API interface (async)
 ├── components/
-│   ├── package_info.rs
+│   ├── package_info.rs # Scrollable package details
 │   ├── package_input.rs
 │   └── packages_table.rs
 ├── components.rs       # Component trait
 ├── event.rs            # Internal events
-├── focus.rs            # Focus handling
 ├── layout.rs           # Layout constants
 ├── logging.rs          # Log configuration
 ├── main.rs             # Entry point

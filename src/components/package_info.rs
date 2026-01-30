@@ -1,15 +1,19 @@
 use color_eyre::eyre;
 use ratatui::{
+    crossterm::event::{KeyCode, KeyEvent, KeyModifiers},
     layout::{Constraint, Layout, Rect},
     style::Style,
     text::Text,
-    widgets::{Block, Cell, Row, Table},
+    widgets::{Block, Cell, Row, Scrollbar, ScrollbarOrientation, ScrollbarState, Table, TableState},
     Frame,
 };
 use textwrap::wrap;
 
 use crate::{
-    components::Component, event::Event, layout::{LABEL_WIDTH, LEFT_PANEL_PERCENT},
+    action::Action,
+    components::Component,
+    event::Event,
+    layout::{LABEL_WIDTH, LEFT_PANEL_PERCENT},
     pacman::{format_size, format_timestamp, Package},
     theme::Theme,
 };
@@ -18,6 +22,9 @@ use crate::{
 pub(crate) struct PackageInfo {
     package: Package,
     theme: Theme,
+    active: bool,
+    scroll_state: TableState,
+    total_rows: usize,
 }
 
 fn create_row<'a>(label: &'a str, value: &'a str, width: usize) -> Row<'a> {
@@ -31,7 +38,71 @@ fn create_row<'a>(label: &'a str, value: &'a str, width: usize) -> Row<'a> {
     .height(height)
 }
 
+impl PackageInfo {
+    fn scroll_down(&mut self) {
+        let i = match self.scroll_state.selected() {
+            Some(i) => {
+                if i >= self.total_rows.saturating_sub(1) {
+                    i
+                } else {
+                    i + 1
+                }
+            }
+            None => 0,
+        };
+        self.scroll_state.select(Some(i));
+    }
+
+    fn scroll_up(&mut self) {
+        let i = match self.scroll_state.selected() {
+            Some(i) => i.saturating_sub(1),
+            None => 0,
+        };
+        self.scroll_state.select(Some(i));
+    }
+}
+
 impl Component for PackageInfo {
+    fn handle_key_event(&mut self, key_event: &KeyEvent) -> eyre::Result<Option<Vec<Action>>> {
+        if !self.active {
+            return Ok(None);
+        }
+
+        match key_event {
+            KeyEvent {
+                modifiers: KeyModifiers::NONE,
+                code: KeyCode::Char('j'),
+                ..
+            } => self.scroll_down(),
+            KeyEvent {
+                modifiers: KeyModifiers::NONE,
+                code: KeyCode::Char('k'),
+                ..
+            } => self.scroll_up(),
+            KeyEvent {
+                modifiers: KeyModifiers::CONTROL,
+                code: KeyCode::Char('d'),
+                ..
+            } => {
+                for _ in 0..10 {
+                    self.scroll_down();
+                }
+            }
+            KeyEvent {
+                modifiers: KeyModifiers::CONTROL,
+                code: KeyCode::Char('u'),
+                ..
+            } => {
+                for _ in 0..10 {
+                    self.scroll_up();
+                }
+            }
+            _ => {}
+        }
+
+        Ok(None)
+    }
+
     fn draw(&mut self, frame: &mut Frame, area: &Rect) -> eyre::Result<()> {
         let area = Layout::horizontal([
             Constraint::Percentage(LEFT_PANEL_PERCENT),
@@ -119,18 +190,47 @@ impl Component for PackageInfo {
         if self.package.sha256sum != "-" && !self.package.sha256sum.is_empty() {
             rows.push(create_row("sha256sum", &self.package.sha256sum, value_width));
         }
+
+        self.total_rows = rows.len();
+
+        let border_color = if self.active {
+            self.theme.active
+        } else {
+            self.theme.inactive
+        };
+
         let widths = [Constraint::Length(LABEL_WIDTH), Constraint::Percentage(100)];
         let table = Table::new(rows, widths)
-            .block(Block::bordered().border_style(Style::default().fg(self.theme.active)));
-        frame.render_widget(table, area);
+            .block(Block::bordered().border_style(Style::default().fg(border_color)))
+            .row_highlight_style(Style::default());
+
+        frame.render_stateful_widget(table, area, &mut self.scroll_state);
+
+        // Render scrollbar
+        let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
+            .begin_symbol(Some("↑"))
+            .end_symbol(Some("↓"));
+        let mut scrollbar_state = ScrollbarState::new(self.total_rows)
+            .position(self.scroll_state.selected().unwrap_or(0));
+        frame.render_stateful_widget(
+            scrollbar,
+            area.inner(ratatui::layout::Margin { vertical: 1, horizontal: 0 }),
+            &mut scrollbar_state,
+        );
+
         Ok(())
     }
 
     fn update(&mut self, event: &Event) -> eyre::Result<()> {
         if let Event::PackageSelected(package) = event {
             self.package = (**package).clone();
+            self.scroll_state.select(Some(0)); // Reset scroll on new package
         }
 
         Ok(())
+    }
+
+    fn set_active(&mut self, active: bool) {
+        self.active = active;
     }
 }

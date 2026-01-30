@@ -26,4 +26,8 @@ pub(crate) trait Component {
         let _ = area;
         Ok(())
     }
+
+    fn set_active(&mut self, active: bool) {
+        let _ = active;
+    }
 }

@@ -9,7 +9,6 @@ use ratatui::Frame;
 
 use crate::action::Action;
 use crate::components::Component;
-use crate::focus::{handle_focus_keys, FocusPosition};
 use crate::layout::{INPUT_HEIGHT, LEFT_PANEL_PERCENT};
 use crate::theme::Theme;
 
@@ -52,8 +51,6 @@ impl PackageInput {
 
 impl Component for PackageInput {
     fn handle_key_event(&mut self, key_event: &KeyEvent) -> eyre::Result<Option<Vec<Action>>> {
-        handle_focus_keys(key_event, &mut self.active, FocusPosition::Top);
-
         if !self.active {
             return Ok(None);
         }
@@ -120,5 +117,9 @@ impl Component for PackageInput {
             .block(Block::bordered().border_style(Style::default().fg(border_color)));
         frame.render_widget(search, area);
         Ok(())
+    }
+
+    fn set_active(&mut self, active: bool) {
+        self.active = active;
     }
 }
