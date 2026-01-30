@@ -9,8 +9,10 @@ A Terminal User Interface (TUI) for Arch Linux's Pacman package manager, built w
 - Interactive package search with instant results
 - **AUR support** via yay/paru
 - Package installation, update and removal
-- Detailed package information display
+- **Multi-select packages** for batch install/remove
+- Detailed package information display (scrollable)
 - Vim-like keyboard navigation
+- **Mouse scroll support** for packages table and info panel
 - Async AUR search (non-blocking UI)
 
 ## Requirements
@@ -51,9 +53,12 @@ Logs are written to `/tmp/ptu.log`.
 | `j` / `k`          | Navigate up/down (table) or scroll (info) |
 | `Ctrl+d` / `Ctrl+u`| Page down/up in package info        |
 | `g` / `G`          | Jump to top/bottom of the list      |
+| `Space`            | Toggle package selection (multi-select) |
 | `i`                | Install selected package            |
-| `I`                | Update and install package          |
+| `I`                | Batch install selected packages     |
 | `r`                | Remove selected package             |
+| `R`                | Batch remove selected packages      |
+| `Mouse scroll`     | Scroll packages table or info panel |
 | `Esc`              | Exit application                    |
 
 ## Components
