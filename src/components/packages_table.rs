@@ -11,57 +11,105 @@ use ratatui::Frame;
 use crate::action::Action;
 use crate::components::Component;
 use crate::event::Event;
-use crate::layout::{INPUT_HEIGHT, LEFT_PANEL_PERCENT};
+use crate::filter::{InstallFilter, PackageFilter, SourceFilter};
+use crate::layout::{FILTER_HEIGHT, INPUT_HEIGHT, LEFT_PANEL_PERCENT};
 use crate::{pacman::Package, theme::Theme};
 
 const COLOR_INSTALLED: Color = Color::Rgb(0, 255, 0);
 const COLOR_SELECTED: Color = Color::Rgb(255, 165, 0); // Orange
+const COLOR_FILTER_ACTIVE: Color = Color::Rgb(0, 255, 127); // Bright green
+const COLOR_FILTER_INACTIVE: Color = Color::Rgb(128, 128, 128); // Dim gray
 
 #[derive(Default)]
 pub(crate) struct PackagesTable {
     state: TableState,
-    packages: Vec<Package>,
+    all_packages: Vec<Package>,
     theme: Theme,
     active: bool,
     selected_indices: HashSet<usize>,
+    filter: PackageFilter,
+    filter_mode: bool,
 }
 
 impl PackagesTable {
+    /// Returns packages that match the current filter
+    fn filtered_packages(&self) -> Vec<(usize, &Package)> {
+        self.all_packages
+            .iter()
+            .enumerate()
+            .filter(|(_, pkg)| self.filter.matches(pkg))
+            .collect()
+    }
+
     fn next(&mut self) {
-        let i = match self.state.selected() {
-            Some(i) => {
-                if i >= self.packages.len() - 1 {
+        let filtered = self.filtered_packages();
+        if filtered.is_empty() {
+            return;
+        }
+
+        let current_idx = self.state.selected().unwrap_or(0);
+        // Find position of current index in filtered list
+        let current_pos = filtered.iter().position(|(idx, _)| *idx == current_idx);
+
+        let next_pos = match current_pos {
+            Some(pos) => {
+                if pos >= filtered.len() - 1 {
                     0
                 } else {
-                    i + 1
+                    pos + 1
                 }
             }
             None => 0,
         };
-        self.state.select(Some(i));
+
+        self.state.select(Some(filtered[next_pos].0));
     }
 
     fn previous(&mut self) {
-        let i = match self.state.selected() {
-            Some(i) => {
-                if i == 0 {
-                    self.packages.len() - 1
+        let filtered = self.filtered_packages();
+        if filtered.is_empty() {
+            return;
+        }
+
+        let current_idx = self.state.selected().unwrap_or(0);
+        // Find position of current index in filtered list
+        let current_pos = filtered.iter().position(|(idx, _)| *idx == current_idx);
+
+        let prev_pos = match current_pos {
+            Some(pos) => {
+                if pos == 0 {
+                    filtered.len() - 1
                 } else {
-                    i - 1
+                    pos - 1
                 }
             }
             None => 0,
         };
-        self.state.select(Some(i));
+
+        self.state.select(Some(filtered[prev_pos].0));
     }
 
     fn get_selected_package(&mut self) -> Option<&mut Package> {
         let index = self.state.selected()?;
-        self.packages.get_mut(index)
+        self.all_packages.get_mut(index)
     }
 
     fn reset_selection(&mut self) {
-        self.state.select(Some(0));
+        // Find first filtered package index
+        let first_filtered_idx = self
+            .all_packages
+            .iter()
+            .enumerate()
+            .find(|(_, pkg)| self.filter.matches(pkg))
+            .map(|(idx, _)| idx);
+
+        if let Some(idx) = first_filtered_idx {
+            self.state.select(Some(idx));
+            tracing::debug!(index = idx, "selection reset to first filtered package");
+        } else {
+            self.state.select(None);
+            tracing::debug!("no packages match filter, selection cleared");
+        }
     }
 
     fn toggle_selection(&mut self) {
@@ -87,9 +135,73 @@ impl PackagesTable {
         self.selected_indices
             .iter()
             .filter_map(|&idx| {
-                self.packages.get(idx).map(|p| (p.name.clone(), p.source.clone()))
+                self.all_packages.get(idx).map(|p| (p.name.clone(), p.source.clone()))
             })
             .collect()
+    }
+
+    fn go_to_first(&mut self) {
+        let filtered = self.filtered_packages();
+        if let Some((first_idx, _)) = filtered.first() {
+            self.state.select(Some(*first_idx));
+        }
+    }
+
+    fn go_to_last(&mut self) {
+        let filtered = self.filtered_packages();
+        if let Some((last_idx, _)) = filtered.last() {
+            self.state.select(Some(*last_idx));
+        }
+    }
+
+    fn draw_filter_bar(&self, frame: &mut Frame, area: Rect) {
+        // Build filter bar line
+        let mut spans = Vec::new();
+
+        // Filter mode indicator
+        if self.filter_mode {
+            spans.push(Span::styled(
+                "[FILTER] ",
+                Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+            ));
+        }
+
+        // Install filter
+        let install_color = if self.filter.install != InstallFilter::All {
+            COLOR_FILTER_ACTIVE
+        } else {
+            COLOR_FILTER_INACTIVE
+        };
+        spans.push(Span::styled(
+            format!("[i:{}]", self.filter.install.label()),
+            Style::default().fg(install_color),
+        ));
+
+        spans.push(Span::from(" "));
+
+        // Source filter
+        let source_color = if self.filter.source != SourceFilter::All {
+            COLOR_FILTER_ACTIVE
+        } else {
+            COLOR_FILTER_INACTIVE
+        };
+        spans.push(Span::styled(
+            format!("[s:{}]", self.filter.source.label()),
+            Style::default().fg(source_color),
+        ));
+
+        // Show filtered count
+        let filtered_count = self.filtered_packages().len();
+        let total_count = self.all_packages.len();
+        if filtered_count != total_count {
+            spans.push(Span::styled(
+                format!(" ({}/{})", filtered_count, total_count),
+                Style::default().fg(Color::DarkGray),
+            ));
+        }
+
+        let line = Line::from(spans);
+        frame.render_widget(line, area);
     }
 }
 
@@ -101,12 +213,80 @@ impl Component for PackagesTable {
 
         let mut actions = Vec::new();
 
+        // Handle filter mode keys
+        if self.filter_mode {
+            match key_event.code {
+                KeyCode::Char('i') => {
+                    tracing::debug!("filter mode: cycling install filter");
+                    self.filter.install.cycle();
+                    self.reset_selection();
+                    self.clear_selection();
+                    self.filter_mode = false;
+                    if let Some(package) = self.get_selected_package() {
+                        actions.push(Action::SelectPackage(Box::new(package.clone())));
+                    }
+                }
+                KeyCode::Char('a') => {
+                    tracing::debug!("filter mode: toggling AUR filter");
+                    self.filter.source = if self.filter.source == SourceFilter::Aur {
+                        SourceFilter::All
+                    } else {
+                        SourceFilter::Aur
+                    };
+                    self.reset_selection();
+                    self.clear_selection();
+                    self.filter_mode = false;
+                    if let Some(package) = self.get_selected_package() {
+                        actions.push(Action::SelectPackage(Box::new(package.clone())));
+                    }
+                }
+                KeyCode::Char('p') => {
+                    tracing::debug!("filter mode: toggling Pacman filter");
+                    self.filter.source = if self.filter.source == SourceFilter::Pacman {
+                        SourceFilter::All
+                    } else {
+                        SourceFilter::Pacman
+                    };
+                    self.reset_selection();
+                    self.clear_selection();
+                    self.filter_mode = false;
+                    if let Some(package) = self.get_selected_package() {
+                        actions.push(Action::SelectPackage(Box::new(package.clone())));
+                    }
+                }
+                KeyCode::Char('c') => {
+                    tracing::debug!("filter mode: clearing all filters");
+                    self.filter.clear();
+                    self.reset_selection();
+                    self.clear_selection();
+                    self.filter_mode = false;
+                    if let Some(package) = self.get_selected_package() {
+                        actions.push(Action::SelectPackage(Box::new(package.clone())));
+                    }
+                }
+                KeyCode::Esc => {
+                    tracing::debug!("filter mode: exiting");
+                    self.filter_mode = false;
+                }
+                _ => {
+                    // Any other key exits filter mode without action
+                    self.filter_mode = false;
+                }
+            }
+            return Ok(Some(actions));
+        }
+
+        // Normal mode key handling
         match key_event {
             KeyEvent {
                 modifiers: KeyModifiers::NONE,
                 code,
                 ..
             } => match code {
+                KeyCode::Char('f') => {
+                    tracing::debug!("entering filter mode");
+                    self.filter_mode = true;
+                }
                 KeyCode::Char('j') => {
                     self.next();
                     if let Some(package) = self.get_selected_package() {
@@ -120,7 +300,7 @@ impl Component for PackagesTable {
                     }
                 }
                 KeyCode::Char('g') => {
-                    self.state.select(Some(0));
+                    self.go_to_first();
                     if let Some(package) = self.get_selected_package() {
                         actions.push(Action::SelectPackage(Box::new(package.clone())));
                     }
@@ -152,8 +332,7 @@ impl Component for PackagesTable {
                 ..
             } => match code {
                 KeyCode::Char('G') => {
-                    let packages_amount = self.packages.len();
-                    self.state.select(Some(packages_amount - 1));
+                    self.go_to_last();
                     if let Some(package) = self.get_selected_package() {
                         actions.push(Action::SelectPackage(Box::new(package.clone())));
                     }
@@ -195,30 +374,30 @@ impl Component for PackagesTable {
     fn update(&mut self, event: &Event) -> eyre::Result<()> {
         match event {
             Event::FoundPackages(packages) => {
-                self.packages = packages.clone();
+                self.all_packages = packages.clone();
                 self.reset_selection();
                 self.clear_selection(); // Clear selection on new search (indices invalidate)
             }
             Event::AurPackagesFound(aur_packages) => {
                 // Append AUR packages without resetting selection
                 tracing::debug!(count = aur_packages.len(), "merging AUR packages into list");
-                self.packages.extend(aur_packages.clone());
+                self.all_packages.extend(aur_packages.clone());
             }
             Event::PackageInstalled(package_name) => {
-                if let Some(index) = self.packages.iter().position(|p| p.name == *package_name) {
-                    self.packages[index].installed = true;
+                if let Some(index) = self.all_packages.iter().position(|p| p.name == *package_name) {
+                    self.all_packages[index].installed = true;
                 }
             }
             Event::PackageRemoved(package_name) => {
-                if let Some(index) = self.packages.iter().position(|p| p.name == *package_name) {
-                    self.packages[index].installed = false;
+                if let Some(index) = self.all_packages.iter().position(|p| p.name == *package_name) {
+                    self.all_packages[index].installed = false;
                 }
             }
             Event::PackagesInstalled(names) => {
                 tracing::debug!(count = names.len(), "marking packages as installed");
                 for name in names {
-                    if let Some(index) = self.packages.iter().position(|p| &p.name == name) {
-                        self.packages[index].installed = true;
+                    if let Some(index) = self.all_packages.iter().position(|p| &p.name == name) {
+                        self.all_packages[index].installed = true;
                     }
                 }
                 self.clear_selection();
@@ -226,8 +405,8 @@ impl Component for PackagesTable {
             Event::PackagesRemoved(names) => {
                 tracing::debug!(count = names.len(), "marking packages as removed");
                 for name in names {
-                    if let Some(index) = self.packages.iter().position(|p| &p.name == name) {
-                        self.packages[index].installed = false;
+                    if let Some(index) = self.all_packages.iter().position(|p| &p.name == name) {
+                        self.all_packages[index].installed = false;
                     }
                 }
                 self.clear_selection();
@@ -244,11 +423,27 @@ impl Component for PackagesTable {
             Constraint::Percentage(100 - LEFT_PANEL_PERCENT),
         ])
         .split(*area)[0];
-        let area = Layout::vertical([Constraint::Length(INPUT_HEIGHT), Constraint::Percentage(100)])
-            .split(horizontal_layout)[1];
+
+        // Split area for filter bar and table
+        let vertical_areas = Layout::vertical([
+            Constraint::Length(INPUT_HEIGHT),
+            Constraint::Length(FILTER_HEIGHT),
+            Constraint::Percentage(100),
+        ])
+        .split(horizontal_layout);
+
+        let filter_area = vertical_areas[1];
+        let table_area = vertical_areas[2];
+
+        // Draw filter bar
+        self.draw_filter_bar(frame, filter_area);
+
+        // Get filtered packages
+        let filtered = self.filtered_packages();
+
         let mut rows = Vec::new();
-        for (idx, package) in self.packages.iter().enumerate() {
-            let is_selected = self.selected_indices.contains(&idx);
+        for (idx, package) in filtered.iter() {
+            let is_selected = self.selected_indices.contains(idx);
             let selection_marker = if is_selected {
                 Span::styled("*", Style::default().fg(COLOR_SELECTED))
             } else {
@@ -291,7 +486,17 @@ impl Component for PackagesTable {
             .header(header)
             .block(Block::bordered().border_style(Style::default().fg(border_color)))
             .row_highlight_style(Style::new().add_modifier(Modifier::REVERSED));
-        frame.render_stateful_widget(output, area, &mut self.state);
+
+        // Map the internal selection to the filtered view row position
+        let mut display_state = TableState::default();
+        if let Some(selected_idx) = self.state.selected() {
+            // Find the position of selected_idx in the filtered list
+            if let Some(pos) = filtered.iter().position(|(idx, _)| *idx == selected_idx) {
+                display_state.select(Some(pos));
+            }
+        }
+
+        frame.render_stateful_widget(output, table_area, &mut display_state);
         Ok(())
     }
 

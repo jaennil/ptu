@@ -8,7 +8,7 @@ use crate::aur;
 use crate::components::package_info::PackageInfo;
 use crate::components::packages_table::PackagesTable;
 use crate::components::{package_input::PackageInput, Component};
-use crate::layout::{INPUT_HEIGHT, LEFT_PANEL_PERCENT};
+use crate::layout::{FILTER_HEIGHT, INPUT_HEIGHT, LEFT_PANEL_PERCENT};
 use crate::pacman::{self, Package, Pacman};
 use crate::tui::Tui;
 
@@ -164,11 +164,19 @@ impl App {
 
             let left_vertical = Layout::vertical([
                 Constraint::Length(INPUT_HEIGHT),
+                Constraint::Length(FILTER_HEIGHT),
                 Constraint::Percentage(100),
             ])
             .split(horizontal[0]);
 
-            *packages_table_area.borrow_mut() = left_vertical[1];
+            // Packages table area includes filter bar (index 1) and table (index 2)
+            let filter_and_table = Rect {
+                x: left_vertical[1].x,
+                y: left_vertical[1].y,
+                width: left_vertical[1].width,
+                height: left_vertical[1].height + left_vertical[2].height,
+            };
+            *packages_table_area.borrow_mut() = filter_and_table;
             *package_info_area.borrow_mut() = horizontal[1];
 
             // Draw package input first
