@@ -3,6 +3,7 @@ mod app;
 mod aur;
 mod components;
 mod event;
+mod filter;
 mod layout;
 mod logging;
 mod pacman;
