@@ -190,12 +190,29 @@ impl PackagesTable {
             Style::default().fg(source_color),
         ));
 
-        // Show filtered count
-        let filtered_count = self.filtered_packages().len();
-        let total_count = self.all_packages.len();
-        if filtered_count != total_count {
+        // Package statistics
+        if !self.all_packages.is_empty() {
+            let total = self.all_packages.len();
+            let aur_count = self.all_packages.iter().filter(|p| p.source == "aur").count();
+            let pacman_count = total - aur_count;
+            let filtered_count = self.filtered_packages().len();
+
+            spans.push(Span::from(" "));
+
+            if filtered_count != total {
+                spans.push(Span::styled(
+                    format!("{}/{}", filtered_count, total),
+                    Style::default().fg(Color::DarkGray),
+                ));
+            } else {
+                spans.push(Span::styled(
+                    format!("{}", total),
+                    Style::default().fg(Color::DarkGray),
+                ));
+            }
+
             spans.push(Span::styled(
-                format!(" ({}/{})", filtered_count, total_count),
+                format!(" (repo:{} aur:{})", pacman_count, aur_count),
                 Style::default().fg(Color::DarkGray),
             ));
         }
