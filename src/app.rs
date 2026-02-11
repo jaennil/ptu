@@ -16,6 +16,9 @@ use color_eyre::eyre;
 use ratatui::crossterm;
 use ratatui::crossterm::event::{Event, KeyCode, KeyEvent, MouseEvent, MouseEventKind};
 use ratatui::layout::{Constraint, Layout, Rect};
+use ratatui::style::{Color, Modifier, Style};
+use ratatui::text::{Line, Span};
+use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
 
 const NUM_COMPONENTS: usize = 3; // package_input, packages_table, package_info
 
@@ -31,6 +34,8 @@ pub(crate) struct App {
     focused: usize, // 0 = package_input, 1 = packages_table, 2 = package_info
     packages_table_area: Rect,
     package_info_area: Rect,
+    show_help: bool,
+    help_scroll: u16,
 }
 
 impl App {
@@ -72,6 +77,8 @@ impl App {
             focused: 0,
             packages_table_area: Rect::default(),
             package_info_area: Rect::default(),
+            show_help: false,
+            help_scroll: 0,
         })
     }
 
@@ -151,6 +158,8 @@ impl App {
         let render_error: RefCell<Option<eyre::Report>> = RefCell::new(None);
         let packages_table_area: RefCell<Rect> = RefCell::new(Rect::default());
         let package_info_area: RefCell<Rect> = RefCell::new(Rect::default());
+        let show_help = self.show_help;
+        let help_scroll = self.help_scroll;
 
         self.tui.draw(|frame| {
             let area = frame.area();
@@ -190,6 +199,11 @@ impl App {
                     *render_error.borrow_mut() = Some(e);
                     return;
                 }
+            }
+
+            // Draw help overlay on top of everything
+            if show_help {
+                Self::draw_help(frame, area, help_scroll);
             }
         })?;
 
@@ -234,6 +248,37 @@ impl App {
     }
 
     fn handle_key_event(&mut self, key_event: &KeyEvent) -> eyre::Result<Vec<Action>> {
+        // When help is visible, intercept all keys
+        if self.show_help {
+            match key_event.code {
+                KeyCode::Char('?') | KeyCode::Esc => {
+                    tracing::debug!("closing help window");
+                    self.show_help = false;
+                    self.help_scroll = 0;
+                }
+                KeyCode::Char('j') => {
+                    self.help_scroll = self.help_scroll.saturating_add(1);
+                    tracing::trace!(scroll = self.help_scroll, "help scroll down");
+                }
+                KeyCode::Char('k') => {
+                    self.help_scroll = self.help_scroll.saturating_sub(1);
+                    tracing::trace!(scroll = self.help_scroll, "help scroll up");
+                }
+                _ => {
+                    tracing::trace!(key = ?key_event.code, "key swallowed by help window");
+                }
+            }
+            return Ok(Vec::new());
+        }
+
+        // Open help with ?
+        if key_event.code == KeyCode::Char('?') {
+            tracing::debug!("opening help window");
+            self.show_help = true;
+            self.help_scroll = 0;
+            return Ok(Vec::new());
+        }
+
         if key_event.code == KeyCode::Esc {
             self.should_exit = true;
         }
@@ -346,6 +391,135 @@ impl App {
                 }
             }
         });
+    }
+
+    fn draw_help(frame: &mut ratatui::Frame, area: Rect, scroll: u16) {
+        // Centered area: ~70% width, ~80% height
+        let help_width = (area.width as u32 * 70 / 100) as u16;
+        let help_height = (area.height as u32 * 80 / 100) as u16;
+        let help_x = area.x + (area.width.saturating_sub(help_width)) / 2;
+        let help_y = area.y + (area.height.saturating_sub(help_height)) / 2;
+        let help_area = Rect::new(help_x, help_y, help_width, help_height);
+
+        let header_style = Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD);
+        let key_style = Style::default().fg(Color::Cyan);
+        let desc_style = Style::default().fg(Color::White);
+
+        let lines = vec![
+            Line::from(Span::styled(" Global", header_style)),
+            Line::from(vec![
+                Span::styled("   ?             ", key_style),
+                Span::styled("Toggle help", desc_style),
+            ]),
+            Line::from(vec![
+                Span::styled("   Esc           ", key_style),
+                Span::styled("Quit / Close help", desc_style),
+            ]),
+            Line::from(vec![
+                Span::styled("   Tab           ", key_style),
+                Span::styled("Cycle focus", desc_style),
+            ]),
+            Line::from(vec![
+                Span::styled("   Alt+j/k/h/l   ", key_style),
+                Span::styled("Navigate focus", desc_style),
+            ]),
+            Line::from(""),
+            Line::from(Span::styled(" Search Input", header_style)),
+            Line::from(vec![
+                Span::styled("   <type>        ", key_style),
+                Span::styled("Search packages", desc_style),
+            ]),
+            Line::from(vec![
+                Span::styled("   Backspace     ", key_style),
+                Span::styled("Delete character", desc_style),
+            ]),
+            Line::from(vec![
+                Span::styled("   Ctrl+w        ", key_style),
+                Span::styled("Delete word", desc_style),
+            ]),
+            Line::from(""),
+            Line::from(Span::styled(" Packages Table", header_style)),
+            Line::from(vec![
+                Span::styled("   j / k         ", key_style),
+                Span::styled("Navigate down / up", desc_style),
+            ]),
+            Line::from(vec![
+                Span::styled("   g / G         ", key_style),
+                Span::styled("First / last", desc_style),
+            ]),
+            Line::from(vec![
+                Span::styled("   i             ", key_style),
+                Span::styled("Install package", desc_style),
+            ]),
+            Line::from(vec![
+                Span::styled("   r             ", key_style),
+                Span::styled("Remove package", desc_style),
+            ]),
+            Line::from(vec![
+                Span::styled("   I             ", key_style),
+                Span::styled("Update+install / batch install", desc_style),
+            ]),
+            Line::from(vec![
+                Span::styled("   R             ", key_style),
+                Span::styled("Batch remove", desc_style),
+            ]),
+            Line::from(vec![
+                Span::styled("   Space         ", key_style),
+                Span::styled("Toggle multi-select", desc_style),
+            ]),
+            Line::from(vec![
+                Span::styled("   f             ", key_style),
+                Span::styled("Enter filter mode", desc_style),
+            ]),
+            Line::from(""),
+            Line::from(Span::styled(" Filter Mode (f+key)", header_style)),
+            Line::from(vec![
+                Span::styled("   i             ", key_style),
+                Span::styled("Cycle install filter", desc_style),
+            ]),
+            Line::from(vec![
+                Span::styled("   a             ", key_style),
+                Span::styled("Toggle AUR only", desc_style),
+            ]),
+            Line::from(vec![
+                Span::styled("   p             ", key_style),
+                Span::styled("Toggle Pacman only", desc_style),
+            ]),
+            Line::from(vec![
+                Span::styled("   c             ", key_style),
+                Span::styled("Clear all filters", desc_style),
+            ]),
+            Line::from(vec![
+                Span::styled("   Esc           ", key_style),
+                Span::styled("Exit filter mode", desc_style),
+            ]),
+            Line::from(""),
+            Line::from(Span::styled(" Package Info", header_style)),
+            Line::from(vec![
+                Span::styled("   j / k         ", key_style),
+                Span::styled("Scroll down / up", desc_style),
+            ]),
+            Line::from(vec![
+                Span::styled("   Ctrl+d / u    ", key_style),
+                Span::styled("Page down / up", desc_style),
+            ]),
+        ];
+
+        // Clear the area behind the popup
+        frame.render_widget(Clear, help_area);
+
+        let help_block = Block::default()
+            .title(" Help (?) ")
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(Color::Yellow))
+            .style(Style::default().bg(Color::Black));
+
+        let paragraph = Paragraph::new(lines)
+            .block(help_block)
+            .wrap(Wrap { trim: false })
+            .scroll((scroll, 0));
+
+        frame.render_widget(paragraph, help_area);
     }
 
     fn handle_actions(&mut self, actions: &[Action]) -> eyre::Result<()> {
