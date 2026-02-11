@@ -134,8 +134,13 @@ impl Component for PackageInfo {
 
         let mut rows_with_heights: Vec<(Row, u16)> = Vec::new();
 
+        let matched_files_str = self.package.matched_files.join("\n");
+
         rows_with_heights.push(create_row("description", &self.package.description, value_width));
         rows_with_heights.push(create_row("version", &self.package.version, value_width));
+        if !self.package.matched_files.is_empty() {
+            rows_with_heights.push(create_row("matched files", &matched_files_str, value_width));
+        }
         if self.package.size > 0 {
             rows_with_heights.push(create_row("size", &size_str, value_width));
         }
