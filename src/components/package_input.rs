@@ -3,13 +3,14 @@ use std::time::{Duration, Instant};
 use color_eyre::eyre;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::layout::{Constraint, Layout, Rect};
-use ratatui::style::Style;
+use ratatui::style::{Color, Style};
 use ratatui::widgets::{Block, Paragraph};
 use ratatui::Frame;
 
 use crate::action::Action;
 use crate::components::Component;
 use crate::layout::{INPUT_HEIGHT, LEFT_PANEL_PERCENT};
+use crate::pacman::SearchMode;
 use crate::theme::Theme;
 
 const AUR_DEBOUNCE_MS: u64 = 300;
@@ -20,6 +21,7 @@ pub(crate) struct PackageInput {
     active: bool,
     last_input: Option<Instant>,
     pending_aur_search: bool,
+    search_mode: SearchMode,
 }
 
 impl Default for PackageInput {
@@ -30,6 +32,7 @@ impl Default for PackageInput {
             active: true,
             last_input: None,
             pending_aur_search: false,
+            search_mode: SearchMode::Package,
         }
     }
 }
@@ -37,6 +40,11 @@ impl Default for PackageInput {
 impl PackageInput {
     /// Check if we should trigger AUR search (debounce elapsed)
     pub(crate) fn should_search_aur(&mut self) -> Option<String> {
+        // No AUR search in File mode
+        if self.search_mode == SearchMode::File {
+            return None;
+        }
+
         if self.pending_aur_search
             && let Some(last) = self.last_input
             && last.elapsed() >= Duration::from_millis(AUR_DEBOUNCE_MS)
@@ -47,6 +55,7 @@ impl PackageInput {
         }
         None
     }
+
 }
 
 impl Component for PackageInput {
@@ -55,6 +64,69 @@ impl Component for PackageInput {
             return Ok(None);
         }
 
+        // Ctrl+f: toggle search mode
+        if key_event.modifiers == KeyModifiers::CONTROL && key_event.code == KeyCode::Char('f') {
+            self.search_mode = match self.search_mode {
+                SearchMode::Package => {
+                    tracing::info!("switched to file search mode");
+                    SearchMode::File
+                }
+                SearchMode::File => {
+                    tracing::info!("switched to package search mode");
+                    SearchMode::Package
+                }
+            };
+            self.text.clear();
+            self.pending_aur_search = false;
+            self.last_input = None;
+            // Clear results when switching mode
+            return Ok(Some(vec![Action::SearchPackage(String::new())]));
+        }
+
+        // In File mode, Enter triggers search
+        if self.search_mode == SearchMode::File {
+            match *key_event {
+                KeyEvent {
+                    modifiers: KeyModifiers::NONE,
+                    code: KeyCode::Char(char),
+                    ..
+                } => {
+                    self.text.push(char);
+                }
+                KeyEvent {
+                    modifiers: KeyModifiers::NONE,
+                    code: KeyCode::Backspace,
+                    ..
+                } => {
+                    self.text.pop();
+                }
+                KeyEvent {
+                    modifiers: KeyModifiers::CONTROL,
+                    code: KeyCode::Char('w'),
+                    ..
+                } => {
+                    if let Some((prefix, _)) = self.text.rsplit_once(' ') {
+                        self.text = prefix.to_string();
+                    } else {
+                        self.text.clear();
+                    }
+                }
+                KeyEvent {
+                    modifiers: KeyModifiers::NONE,
+                    code: KeyCode::Enter,
+                    ..
+                } => {
+                    if !self.text.is_empty() {
+                        tracing::info!(query = %self.text, "file search triggered via Enter");
+                        return Ok(Some(vec![Action::SearchFile(self.text.clone())]));
+                    }
+                }
+                _ => {}
+            }
+            return Ok(Some(Vec::new()));
+        }
+
+        // Package mode: instant search per keystroke
         let mut text_changed = false;
 
         match *key_event {
@@ -108,13 +180,35 @@ impl Component for PackageInput {
         .split(*area)[0];
         let area = Layout::vertical([Constraint::Length(INPUT_HEIGHT), Constraint::Percentage(100)])
             .split(horizontal_layout)[0];
-        let border_color = if self.active {
-            self.theme.active
-        } else {
-            self.theme.inactive
+
+        let (border_color, title) = match self.search_mode {
+            SearchMode::Package => {
+                let color = if self.active {
+                    self.theme.active
+                } else {
+                    self.theme.inactive
+                };
+                (color, String::new())
+            }
+            SearchMode::File => {
+                let color = if self.active {
+                    Color::Magenta
+                } else {
+                    self.theme.inactive
+                };
+                (color, " File Search (Enter to search) ".to_string())
+            }
         };
-        let search = Paragraph::new(self.text.clone())
-            .block(Block::bordered().border_style(Style::default().fg(border_color)));
+
+        let block = if title.is_empty() {
+            Block::bordered().border_style(Style::default().fg(border_color))
+        } else {
+            Block::bordered()
+                .border_style(Style::default().fg(border_color))
+                .title(title)
+        };
+
+        let search = Paragraph::new(self.text.clone()).block(block);
         frame.render_widget(search, area);
         Ok(())
     }

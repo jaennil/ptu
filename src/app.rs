@@ -31,6 +31,8 @@ pub(crate) struct App {
     runtime: Runtime,
     aur_sender: UnboundedSender<Vec<Package>>,
     aur_receiver: UnboundedReceiver<Vec<Package>>,
+    file_sender: UnboundedSender<Vec<Package>>,
+    file_receiver: UnboundedReceiver<Vec<Package>>,
     focused: usize, // 0 = package_input, 1 = packages_table, 2 = package_info
     packages_table_area: Rect,
     package_info_area: Rect,
@@ -50,8 +52,9 @@ impl App {
             .enable_all()
             .build()?;
         let (aur_sender, aur_receiver) = tokio::sync::mpsc::unbounded_channel();
+        let (file_sender, file_receiver) = tokio::sync::mpsc::unbounded_channel();
 
-        tracing::debug!("tokio runtime created for async AUR searches");
+        tracing::debug!("tokio runtime created for async searches");
 
         let mut package_input = PackageInput::default();
         package_input.set_active(true); // Start with focus on input
@@ -74,6 +77,8 @@ impl App {
             runtime,
             aur_sender,
             aur_receiver,
+            file_sender,
+            file_receiver,
             focused: 0,
             packages_table_area: Rect::default(),
             package_info_area: Rect::default(),
@@ -141,6 +146,22 @@ impl App {
             if let Ok(aur_packages) = self.aur_receiver.try_recv() {
                 tracing::debug!(count = aur_packages.len(), "received AUR packages from async task");
                 let event = crate::event::Event::AurPackagesFound(aur_packages);
+                for component in self.components.iter_mut() {
+                    component.update(&event)?;
+                }
+                needs_render = true;
+            }
+
+            // Check for file search results from async task
+            if let Ok(file_packages) = self.file_receiver.try_recv() {
+                tracing::debug!(count = file_packages.len(), "received file search results");
+                if let Some(first) = file_packages.first() {
+                    let select_event = crate::event::Event::PackageSelected(Box::new(first.clone()));
+                    for component in self.components.iter_mut() {
+                        component.update(&select_event)?;
+                    }
+                }
+                let event = crate::event::Event::FoundPackages(file_packages);
                 for component in self.components.iter_mut() {
                     component.update(&event)?;
                 }
@@ -437,6 +458,14 @@ impl App {
                 Span::styled("   Ctrl+w        ", key_style),
                 Span::styled("Delete word", desc_style),
             ]),
+            Line::from(vec![
+                Span::styled("   Ctrl+f        ", key_style),
+                Span::styled("Toggle file/package search mode", desc_style),
+            ]),
+            Line::from(vec![
+                Span::styled("   Enter         ", key_style),
+                Span::styled("Search files (in file mode)", desc_style),
+            ]),
             Line::from(""),
             Line::from(Span::styled(" Packages Table", header_style)),
             Line::from(vec![
@@ -559,6 +588,34 @@ impl App {
                     events.push(crate::event::Event::PackageSelected(Box::new(first.clone())));
                 }
                 events.push(crate::event::Event::FoundPackages(packages));
+            }
+            Action::SearchFile(query) => {
+                tracing::info!(query, "starting async file search (pacman -F)");
+                let sender = self.file_sender.clone();
+                let installed = self.pacman.installed_packages().clone();
+                let query = query.clone();
+
+                self.runtime.spawn(async move {
+                    let result = tokio::task::spawn_blocking(move || {
+                        pacman::search_file(&query, &installed)
+                    })
+                    .await;
+
+                    match result {
+                        Ok(Ok(packages)) => {
+                            tracing::debug!(count = packages.len(), "file search completed");
+                            if let Err(e) = sender.send(packages) {
+                                tracing::warn!(%e, "failed to send file search results");
+                            }
+                        }
+                        Ok(Err(e)) => {
+                            tracing::warn!(%e, "file search failed");
+                        }
+                        Err(e) => {
+                            tracing::warn!(%e, "file search task panicked");
+                        }
+                    }
+                });
             }
             Action::InstallPackage { name, source } => {
                 tracing::info!(name, source, "installing package");
