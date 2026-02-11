@@ -4,6 +4,13 @@ use std::process::{Command, ExitStatus};
 use alpm::{Alpm, SigLevel};
 use color_eyre::eyre;
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) enum SearchMode {
+    #[default]
+    Package,
+    File,
+}
+
 pub(crate) struct Pacman {
     handle: Alpm,
     installed_cache: HashSet<String>,
@@ -77,6 +84,7 @@ impl Pacman {
                     provides: pkg.provides().iter().map(|d| d.name().to_string()).collect(),
                     conflicts: pkg.conflicts().iter().map(|d| d.name().to_string()).collect(),
                     build_date: Some(pkg.build_date()),
+                    matched_files: Vec::new(),
                     votes: None,
                     popularity: None,
                     out_of_date: None,
@@ -149,6 +157,89 @@ pub(crate) fn remove_packages(names: &[&str]) -> eyre::Result<ExitStatus> {
     Ok(status)
 }
 
+/// Search for packages by file/command name using `pacman -F`.
+/// This runs an external command (~3s) and parses its output.
+pub(crate) fn search_file(query: &str, installed: &HashSet<String>) -> eyre::Result<Vec<Package>> {
+    if query.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    tracing::debug!(query, "executing pacman -F for file search");
+
+    let output = Command::new("pacman")
+        .arg("-F")
+        .arg("--color=never")
+        .arg(query)
+        .output()?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    tracing::debug!(
+        query,
+        exit_code = ?output.status.code(),
+        stdout_lines = stdout.lines().count(),
+        "pacman -F completed"
+    );
+
+    if !output.status.success() {
+        // pacman -F returns 1 when no results found
+        tracing::debug!(query, "pacman -F found no results");
+        return Ok(Vec::new());
+    }
+
+    let mut packages: Vec<Package> = Vec::new();
+
+    for line in stdout.lines() {
+        if line.starts_with(' ') || line.starts_with('\t') {
+            // File line: belongs to the last package
+            let file_path = line.trim().to_string();
+            if let Some(last_pkg) = packages.last_mut() {
+                last_pkg.matched_files.push(file_path);
+            }
+        } else {
+            // Package line format: "repo/name version"
+            // e.g. "core/coreutils 9.4-2"
+            let line = line.trim();
+            if line.is_empty() {
+                continue;
+            }
+
+            // Parse "repo/name version" or "repo/name version [installed]" etc.
+            let mut parts = line.splitn(2, ' ');
+            let repo_name = parts.next().unwrap_or("");
+            let rest = parts.next().unwrap_or("");
+
+            let (repo, name) = if let Some((r, n)) = repo_name.split_once('/') {
+                (r.to_string(), n.to_string())
+            } else {
+                continue;
+            };
+
+            // Version is the first word in rest
+            let version = rest.split_whitespace().next().unwrap_or("").to_string();
+            let is_installed = installed.contains(&name) || rest.contains("[installed]");
+
+            tracing::trace!(repo, name, version, is_installed, "parsed file search result package");
+
+            packages.push(Package {
+                name,
+                source: repo,
+                installed: is_installed,
+                version,
+                description: String::new(),
+                ..Default::default()
+            });
+        }
+    }
+
+    tracing::debug!(
+        query,
+        count = packages.len(),
+        "file search parsed packages"
+    );
+
+    Ok(packages)
+}
+
 #[derive(Clone, Default)]
 pub(crate) struct Package {
     pub(crate) name: String,
@@ -171,6 +262,8 @@ pub(crate) struct Package {
     pub(crate) provides: Vec<String>,
     pub(crate) conflicts: Vec<String>,
     pub(crate) build_date: Option<i64>,
+    // File search results
+    pub(crate) matched_files: Vec<String>,
     // AUR-specific fields
     pub(crate) votes: Option<i64>,
     pub(crate) popularity: Option<f64>,
