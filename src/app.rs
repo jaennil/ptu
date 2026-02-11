@@ -503,6 +503,10 @@ impl App {
                 Span::styled("   Ctrl+d / u    ", key_style),
                 Span::styled("Page down / up", desc_style),
             ]),
+            Line::from(vec![
+                Span::styled("   o             ", key_style),
+                Span::styled("Open URL in browser", desc_style),
+            ]),
         ];
 
         // Clear the area behind the popup
@@ -735,6 +739,19 @@ impl App {
                         self.pacman.mark_removed(name);
                     }
                     events.push(crate::event::Event::PackagesRemoved(removed_names));
+                }
+            }
+            Action::OpenUrl(url) => {
+                tracing::info!(url, "opening URL in browser");
+                match std::process::Command::new("xdg-open")
+                    .arg(url)
+                    .stdin(std::process::Stdio::null())
+                    .stdout(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::null())
+                    .spawn()
+                {
+                    Ok(_) => tracing::debug!(url, "xdg-open spawned successfully"),
+                    Err(e) => tracing::warn!(url, %e, "failed to open URL with xdg-open"),
                 }
             }
         };

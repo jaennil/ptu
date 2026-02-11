@@ -8,4 +8,5 @@ pub(crate) enum Action {
     InstallPackages { packages: Vec<(String, String)> },  // (name, source)
     RemovePackages { packages: Vec<(String, String)> },   // (name, source)
     SelectPackage(Box<Package>),
+    OpenUrl(String),
 }

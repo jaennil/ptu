@@ -90,6 +90,18 @@ impl Component for PackageInfo {
                     self.scroll_up();
                 }
             }
+            KeyEvent {
+                modifiers: KeyModifiers::NONE,
+                code: KeyCode::Char('o'),
+                ..
+            } => {
+                if !self.package.url.is_empty() {
+                    tracing::info!(url = %self.package.url, "opening package URL in browser");
+                    return Ok(Some(vec![Action::OpenUrl(self.package.url.clone())]));
+                } else {
+                    tracing::debug!("no URL available for this package");
+                }
+            }
             _ => {}
         }
 
