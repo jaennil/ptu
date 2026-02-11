@@ -154,6 +154,7 @@ impl App {
 
             // Check for file search results from async task
             if let Ok(file_packages) = self.file_receiver.try_recv() {
+                self.package_input.set_loading(false);
                 tracing::debug!(count = file_packages.len(), "received file search results");
                 if let Some(first) = file_packages.first() {
                     let select_event = crate::event::Event::PackageSelected(Box::new(first.clone()));
@@ -591,6 +592,7 @@ impl App {
             }
             Action::SearchFile(query) => {
                 tracing::info!(query, "starting async file search (pacman -F)");
+                self.package_input.set_loading(true);
                 let sender = self.file_sender.clone();
                 let installed = self.pacman.installed_packages().clone();
                 let query = query.clone();

@@ -22,6 +22,7 @@ pub(crate) struct PackageInput {
     last_input: Option<Instant>,
     pending_aur_search: bool,
     search_mode: SearchMode,
+    loading: bool,
 }
 
 impl Default for PackageInput {
@@ -33,6 +34,7 @@ impl Default for PackageInput {
             last_input: None,
             pending_aur_search: false,
             search_mode: SearchMode::Package,
+            loading: false,
         }
     }
 }
@@ -56,6 +58,10 @@ impl PackageInput {
         None
     }
 
+    pub(crate) fn set_loading(&mut self, loading: bool) {
+        tracing::debug!(loading, "set loading state");
+        self.loading = loading;
+    }
 }
 
 impl Component for PackageInput {
@@ -64,7 +70,7 @@ impl Component for PackageInput {
             return Ok(None);
         }
 
-        // Ctrl+f: toggle search mode
+        // Ctrl+f: toggle search mode (keep text)
         if key_event.modifiers == KeyModifiers::CONTROL && key_event.code == KeyCode::Char('f') {
             self.search_mode = match self.search_mode {
                 SearchMode::Package => {
@@ -76,10 +82,16 @@ impl Component for PackageInput {
                     SearchMode::Package
                 }
             };
-            self.text.clear();
             self.pending_aur_search = false;
             self.last_input = None;
-            // Clear results when switching mode
+
+            // When switching to package mode, trigger instant search with current text
+            if self.search_mode == SearchMode::Package {
+                self.pending_aur_search = true;
+                self.last_input = Some(Instant::now());
+                return Ok(Some(vec![Action::SearchPackage(self.text.clone())]));
+            }
+            // When switching to file mode, clear results (user needs to press Enter)
             return Ok(Some(vec![Action::SearchPackage(String::new())]));
         }
 
@@ -196,7 +208,12 @@ impl Component for PackageInput {
                 } else {
                     self.theme.inactive
                 };
-                (color, " File Search (Enter to search) ".to_string())
+                let title = if self.loading {
+                    " File Search (searching...) ".to_string()
+                } else {
+                    " File Search (Enter to search) ".to_string()
+                };
+                (color, title)
             }
         };
 
