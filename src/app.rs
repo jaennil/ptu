@@ -5,6 +5,7 @@ use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 
 use crate::action::Action;
 use crate::aur;
+use crate::components::installed_table::InstalledTable;
 use crate::components::package_info::PackageInfo;
 use crate::components::packages_table::PackagesTable;
 use crate::components::{package_input::PackageInput, Component};
@@ -20,12 +21,20 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
 
-const NUM_COMPONENTS: usize = 3; // package_input, packages_table, package_info
+const TAB_BAR_HEIGHT: u16 = 1;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AppTab {
+    Search,
+    Installed,
+}
 
 pub(crate) struct App {
     tui: Tui,
     package_input: PackageInput,
     components: Vec<Box<dyn Component>>,
+    installed_table: InstalledTable,
+    active_tab: AppTab,
     pacman: Pacman,
     should_exit: bool,
     runtime: Runtime,
@@ -33,8 +42,9 @@ pub(crate) struct App {
     aur_receiver: UnboundedReceiver<Vec<Package>>,
     file_sender: UnboundedSender<Vec<Package>>,
     file_receiver: UnboundedReceiver<Vec<Package>>,
-    focused: usize, // 0 = package_input, 1 = packages_table, 2 = package_info
+    focused: usize,
     packages_table_area: Rect,
+    installed_table_area: Rect,
     package_info_area: Rect,
     show_help: bool,
     help_scroll: u16,
@@ -65,6 +75,11 @@ impl App {
         let mut package_info = PackageInfo::default();
         package_info.set_active(false);
 
+        // Load installed packages for Installed tab
+        let installed_packages = pacman.get_installed_packages();
+        tracing::info!(count = installed_packages.len(), "loaded installed packages for Installed tab");
+        let installed_table = InstalledTable::new(installed_packages);
+
         Ok(Self {
             tui,
             package_input,
@@ -72,6 +87,8 @@ impl App {
                 Box::new(packages_table),
                 Box::new(package_info),
             ],
+            installed_table,
+            active_tab: AppTab::Search,
             pacman,
             should_exit,
             runtime,
@@ -81,40 +98,99 @@ impl App {
             file_receiver,
             focused: 0,
             packages_table_area: Rect::default(),
+            installed_table_area: Rect::default(),
             package_info_area: Rect::default(),
             show_help: false,
             help_scroll: 0,
         })
     }
 
-    fn set_focus(&mut self, new_focus: usize) {
-        tracing::debug!(current = self.focused, new = new_focus, "set_focus called");
+    /// Number of focusable components for the current tab
+    fn num_focusable(&self) -> usize {
+        match self.active_tab {
+            AppTab::Search => 3,    // input(0), packages_table(1), package_info(2)
+            AppTab::Installed => 2, // installed_table(0), package_info(1)
+        }
+    }
 
-        if new_focus == self.focused || new_focus >= NUM_COMPONENTS {
+    fn deactivate_focused(&mut self) {
+        match self.active_tab {
+            AppTab::Search => match self.focused {
+                0 => self.package_input.set_active(false),
+                1 => self.components[0].set_active(false), // packages_table
+                2 => self.components[1].set_active(false), // package_info
+                _ => {}
+            },
+            AppTab::Installed => match self.focused {
+                0 => self.installed_table.set_active(false),
+                1 => self.components[1].set_active(false), // package_info
+                _ => {}
+            },
+        }
+    }
+
+    fn activate_focused(&mut self) {
+        match self.active_tab {
+            AppTab::Search => match self.focused {
+                0 => self.package_input.set_active(true),
+                1 => self.components[0].set_active(true),
+                2 => self.components[1].set_active(true),
+                _ => {}
+            },
+            AppTab::Installed => match self.focused {
+                0 => self.installed_table.set_active(true),
+                1 => self.components[1].set_active(true),
+                _ => {}
+            },
+        }
+    }
+
+    fn set_focus(&mut self, new_focus: usize) {
+        let num = self.num_focusable();
+        tracing::debug!(current = self.focused, new = new_focus, num, "set_focus called");
+
+        if new_focus == self.focused || new_focus >= num {
             tracing::debug!("set_focus: no change needed");
             return;
         }
 
-        // Deactivate current
-        match self.focused {
-            0 => self.package_input.set_active(false),
-            n => self.components[n - 1].set_active(false),
-        }
-
+        self.deactivate_focused();
         self.focused = new_focus;
+        self.activate_focused();
 
-        // Activate new
-        match self.focused {
-            0 => self.package_input.set_active(true),
-            n => self.components[n - 1].set_active(true),
-        }
-
-        tracing::info!(focused = self.focused, "focus changed");
+        tracing::info!(focused = self.focused, tab = ?self.active_tab, "focus changed");
     }
 
     fn cycle_focus(&mut self) {
-        let new_focus = (self.focused + 1) % NUM_COMPONENTS;
+        let num = self.num_focusable();
+        let new_focus = (self.focused + 1) % num;
         self.set_focus(new_focus);
+    }
+
+    fn switch_tab(&mut self, tab: AppTab) {
+        if self.active_tab == tab {
+            return;
+        }
+        tracing::info!(from = ?self.active_tab, to = ?tab, "switching tab");
+
+        // Deactivate current focus
+        self.deactivate_focused();
+
+        self.active_tab = tab;
+        self.focused = 0;
+
+        // Activate first component of new tab
+        self.activate_focused();
+
+        // When switching to installed tab, auto-select first package for info panel
+        if tab == AppTab::Installed {
+            if let Some(package) = self.installed_table.get_selected_package() {
+                let event = crate::event::Event::PackageSelected(Box::new(package.clone()));
+                for component in self.components.iter_mut() {
+                    let _ = component.update(&event);
+                }
+            }
+        }
     }
 
     pub(crate) fn run(&mut self) -> eyre::Result<()> {
@@ -179,47 +255,89 @@ impl App {
     fn render(&mut self) -> eyre::Result<()> {
         let render_error: RefCell<Option<eyre::Report>> = RefCell::new(None);
         let packages_table_area: RefCell<Rect> = RefCell::new(Rect::default());
+        let installed_table_area: RefCell<Rect> = RefCell::new(Rect::default());
         let package_info_area: RefCell<Rect> = RefCell::new(Rect::default());
         let show_help = self.show_help;
         let help_scroll = self.help_scroll;
+        let active_tab = self.active_tab;
 
         self.tui.draw(|frame| {
             let area = frame.area();
 
-            // Compute component areas for mouse event routing
+            // Split: tab bar (1 line) + content
+            let main_layout = Layout::vertical([
+                Constraint::Length(TAB_BAR_HEIGHT),
+                Constraint::Percentage(100),
+            ])
+            .split(area);
+
+            let tab_bar_area = main_layout[0];
+            let content_area = main_layout[1];
+
+            // Draw tab bar
+            Self::draw_tab_bar(frame, tab_bar_area, active_tab);
+
+            // Compute layout areas based on content_area
             let horizontal = Layout::horizontal([
                 Constraint::Percentage(LEFT_PANEL_PERCENT),
                 Constraint::Percentage(100 - LEFT_PANEL_PERCENT),
             ])
-            .split(area);
+            .split(content_area);
 
-            let left_vertical = Layout::vertical([
-                Constraint::Length(INPUT_HEIGHT),
-                Constraint::Length(FILTER_HEIGHT),
-                Constraint::Percentage(100),
-            ])
-            .split(horizontal[0]);
-
-            // Packages table area includes filter bar (index 1) and table (index 2)
-            let filter_and_table = Rect {
-                x: left_vertical[1].x,
-                y: left_vertical[1].y,
-                width: left_vertical[1].width,
-                height: left_vertical[1].height + left_vertical[2].height,
-            };
-            *packages_table_area.borrow_mut() = filter_and_table;
             *package_info_area.borrow_mut() = horizontal[1];
 
-            // Draw package input first
-            if let Err(e) = self.package_input.draw(frame, &area) {
-                *render_error.borrow_mut() = Some(e);
-                return;
-            }
-            // Draw other components
-            for component in self.components.iter_mut() {
-                if let Err(e) = component.draw(frame, &area) {
-                    *render_error.borrow_mut() = Some(e);
-                    return;
+            match active_tab {
+                AppTab::Search => {
+                    let left_vertical = Layout::vertical([
+                        Constraint::Length(INPUT_HEIGHT),
+                        Constraint::Length(FILTER_HEIGHT),
+                        Constraint::Percentage(100),
+                    ])
+                    .split(horizontal[0]);
+
+                    let filter_and_table = Rect {
+                        x: left_vertical[1].x,
+                        y: left_vertical[1].y,
+                        width: left_vertical[1].width,
+                        height: left_vertical[1].height + left_vertical[2].height,
+                    };
+                    *packages_table_area.borrow_mut() = filter_and_table;
+
+                    // Draw search tab components
+                    if let Err(e) = self.package_input.draw(frame, &content_area) {
+                        *render_error.borrow_mut() = Some(e);
+                        return;
+                    }
+                    for component in self.components.iter_mut() {
+                        if let Err(e) = component.draw(frame, &content_area) {
+                            *render_error.borrow_mut() = Some(e);
+                            return;
+                        }
+                    }
+                }
+                AppTab::Installed => {
+                    let left_vertical = Layout::vertical([
+                        Constraint::Length(FILTER_HEIGHT), // sort bar
+                        Constraint::Percentage(100),       // table
+                    ])
+                    .split(horizontal[0]);
+
+                    let sort_and_table = Rect {
+                        x: left_vertical[0].x,
+                        y: left_vertical[0].y,
+                        width: left_vertical[0].width,
+                        height: left_vertical[0].height + left_vertical[1].height,
+                    };
+                    *installed_table_area.borrow_mut() = sort_and_table;
+
+                    // Draw installed table with explicit areas
+                    self.installed_table.draw_in_area(frame, left_vertical[0], left_vertical[1]);
+
+                    // Draw package info (right panel) - reuse component
+                    if let Err(e) = self.components[1].draw(frame, &content_area) {
+                        *render_error.borrow_mut() = Some(e);
+                        return;
+                    }
                 }
             }
 
@@ -230,6 +348,7 @@ impl App {
         })?;
 
         self.packages_table_area = packages_table_area.into_inner();
+        self.installed_table_area = installed_table_area.into_inner();
         self.package_info_area = package_info_area.into_inner();
 
         if let Some(e) = render_error.into_inner() {
@@ -305,21 +424,45 @@ impl App {
             self.should_exit = true;
         }
 
-        // Handle focus switching
+        // Handle tab switching (Alt+1 / Alt+2)
         use ratatui::crossterm::event::KeyModifiers;
+        match (key_event.code, key_event.modifiers) {
+            (KeyCode::Char('1'), KeyModifiers::ALT) => {
+                self.switch_tab(AppTab::Search);
+                return Ok(Vec::new());
+            }
+            (KeyCode::Char('2'), KeyModifiers::ALT) => {
+                self.switch_tab(AppTab::Installed);
+                return Ok(Vec::new());
+            }
+            _ => {}
+        }
+
+        // Handle focus switching (tab-aware)
+        let info_focus = self.num_focusable() - 1; // info panel is always last
         match (key_event.code, key_event.modifiers) {
             (KeyCode::Tab, KeyModifiers::NONE) => {
                 self.cycle_focus();
                 return Ok(Vec::new());
             }
-            // Alt+j - focus down (input -> packages)
+            // Alt+j - focus down (to table/list)
             (KeyCode::Char('j'), KeyModifiers::ALT) => {
-                if self.focused < 1 {
-                    self.set_focus(1);
+                match self.active_tab {
+                    AppTab::Search => {
+                        if self.focused < 1 {
+                            self.set_focus(1);
+                        }
+                    }
+                    AppTab::Installed => {
+                        // Only table and info, table is 0
+                        if self.focused != 0 {
+                            self.set_focus(0);
+                        }
+                    }
                 }
                 return Ok(Vec::new());
             }
-            // Alt+k - focus up (packages -> input, info -> input)
+            // Alt+k - focus up (to input/first)
             (KeyCode::Char('k'), KeyModifiers::ALT) => {
                 if self.focused > 0 {
                     self.set_focus(0);
@@ -328,15 +471,18 @@ impl App {
             }
             // Alt+l - focus right (to info panel)
             (KeyCode::Char('l'), KeyModifiers::ALT) => {
-                if self.focused != 2 {
-                    self.set_focus(2);
+                if self.focused != info_focus {
+                    self.set_focus(info_focus);
                 }
                 return Ok(Vec::new());
             }
-            // Alt+h - focus left (from info to packages)
+            // Alt+h - focus left (from info to table)
             (KeyCode::Char('h'), KeyModifiers::ALT) => {
-                if self.focused == 2 {
-                    self.set_focus(1);
+                if self.focused == info_focus {
+                    match self.active_tab {
+                        AppTab::Search => self.set_focus(1),
+                        AppTab::Installed => self.set_focus(0),
+                    }
                 }
                 return Ok(Vec::new());
             }
@@ -345,18 +491,39 @@ impl App {
 
         let mut actions = Vec::new();
 
-        // Only send key events to the focused component
-        match self.focused {
-            0 => {
-                if let Some(component_actions) = self.package_input.handle_key_event(key_event)? {
-                    actions.extend(component_actions);
+        // Route key events to the focused component (tab-aware)
+        match self.active_tab {
+            AppTab::Search => match self.focused {
+                0 => {
+                    if let Some(component_actions) = self.package_input.handle_key_event(key_event)? {
+                        actions.extend(component_actions);
+                    }
                 }
-            }
-            n => {
-                if let Some(component_actions) = self.components[n - 1].handle_key_event(key_event)? {
-                    actions.extend(component_actions);
+                1 => {
+                    if let Some(component_actions) = self.components[0].handle_key_event(key_event)? {
+                        actions.extend(component_actions);
+                    }
                 }
-            }
+                2 => {
+                    if let Some(component_actions) = self.components[1].handle_key_event(key_event)? {
+                        actions.extend(component_actions);
+                    }
+                }
+                _ => {}
+            },
+            AppTab::Installed => match self.focused {
+                0 => {
+                    if let Some(component_actions) = self.installed_table.handle_key_event(key_event)? {
+                        actions.extend(component_actions);
+                    }
+                }
+                1 => {
+                    if let Some(component_actions) = self.components[1].handle_key_event(key_event)? {
+                        actions.extend(component_actions);
+                    }
+                }
+                _ => {}
+            },
         }
 
         Ok(actions)
@@ -370,20 +537,40 @@ impl App {
             MouseEventKind::ScrollUp | MouseEventKind::ScrollDown => {
                 let (x, y) = (mouse_event.column, mouse_event.row);
 
-                // Route to component based on cursor position
-                if self.packages_table_area.contains((x, y).into()) {
-                    tracing::trace!(x, y, "mouse scroll on packages table");
-                    if let Some(component_actions) =
-                        self.components[0].handle_mouse_event(mouse_event, &self.packages_table_area)?
-                    {
-                        actions.extend(component_actions);
+                match self.active_tab {
+                    AppTab::Search => {
+                        if self.packages_table_area.contains((x, y).into()) {
+                            tracing::trace!(x, y, "mouse scroll on packages table");
+                            if let Some(component_actions) =
+                                self.components[0].handle_mouse_event(mouse_event, &self.packages_table_area)?
+                            {
+                                actions.extend(component_actions);
+                            }
+                        } else if self.package_info_area.contains((x, y).into()) {
+                            tracing::trace!(x, y, "mouse scroll on package info");
+                            if let Some(component_actions) =
+                                self.components[1].handle_mouse_event(mouse_event, &self.package_info_area)?
+                            {
+                                actions.extend(component_actions);
+                            }
+                        }
                     }
-                } else if self.package_info_area.contains((x, y).into()) {
-                    tracing::trace!(x, y, "mouse scroll on package info");
-                    if let Some(component_actions) =
-                        self.components[1].handle_mouse_event(mouse_event, &self.package_info_area)?
-                    {
-                        actions.extend(component_actions);
+                    AppTab::Installed => {
+                        if self.installed_table_area.contains((x, y).into()) {
+                            tracing::trace!(x, y, "mouse scroll on installed table");
+                            if let Some(component_actions) =
+                                self.installed_table.handle_mouse_event(mouse_event, &self.installed_table_area)?
+                            {
+                                actions.extend(component_actions);
+                            }
+                        } else if self.package_info_area.contains((x, y).into()) {
+                            tracing::trace!(x, y, "mouse scroll on package info");
+                            if let Some(component_actions) =
+                                self.components[1].handle_mouse_event(mouse_event, &self.package_info_area)?
+                            {
+                                actions.extend(component_actions);
+                            }
+                        }
                     }
                 }
             }
@@ -415,6 +602,21 @@ impl App {
         });
     }
 
+    fn draw_tab_bar(frame: &mut ratatui::Frame, area: Rect, active_tab: AppTab) {
+        let active_style = Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD);
+        let inactive_style = Style::default().fg(Color::DarkGray);
+
+        let search_style = if active_tab == AppTab::Search { active_style } else { inactive_style };
+        let installed_style = if active_tab == AppTab::Installed { active_style } else { inactive_style };
+
+        let line = Line::from(vec![
+            Span::styled(" 1:Search ", search_style),
+            Span::styled(" 2:Installed ", installed_style),
+        ]);
+
+        frame.render_widget(line, area);
+    }
+
     fn draw_help(frame: &mut ratatui::Frame, area: Rect, scroll: u16) {
         // Centered area: ~70% width, ~80% height
         let help_width = (area.width as u32 * 70 / 100) as u16;
@@ -444,6 +646,16 @@ impl App {
             Line::from(vec![
                 Span::styled("   Alt+j/k/h/l   ", key_style),
                 Span::styled("Navigate focus", desc_style),
+            ]),
+            Line::from(""),
+            Line::from(Span::styled(" Tabs", header_style)),
+            Line::from(vec![
+                Span::styled("   Alt+1         ", key_style),
+                Span::styled("Search tab", desc_style),
+            ]),
+            Line::from(vec![
+                Span::styled("   Alt+2         ", key_style),
+                Span::styled("Installed tab", desc_style),
             ]),
             Line::from(""),
             Line::from(Span::styled(" Search Input", header_style)),
@@ -524,6 +736,36 @@ impl App {
                 Span::styled("Exit filter mode", desc_style),
             ]),
             Line::from(""),
+            Line::from(Span::styled(" Installed Table", header_style)),
+            Line::from(vec![
+                Span::styled("   j / k         ", key_style),
+                Span::styled("Navigate down / up", desc_style),
+            ]),
+            Line::from(vec![
+                Span::styled("   g / G         ", key_style),
+                Span::styled("First / last", desc_style),
+            ]),
+            Line::from(vec![
+                Span::styled("   s             ", key_style),
+                Span::styled("Cycle sort column", desc_style),
+            ]),
+            Line::from(vec![
+                Span::styled("   S             ", key_style),
+                Span::styled("Toggle sort direction", desc_style),
+            ]),
+            Line::from(vec![
+                Span::styled("   r             ", key_style),
+                Span::styled("Remove package", desc_style),
+            ]),
+            Line::from(vec![
+                Span::styled("   R             ", key_style),
+                Span::styled("Batch remove", desc_style),
+            ]),
+            Line::from(vec![
+                Span::styled("   Space         ", key_style),
+                Span::styled("Toggle multi-select", desc_style),
+            ]),
+            Line::from(""),
             Line::from(Span::styled(" Package Info", header_style)),
             Line::from(vec![
                 Span::styled("   j / k         ", key_style),
@@ -568,6 +810,11 @@ impl App {
             for event in &events {
                 component.update(event)?;
             }
+        }
+
+        // Also propagate events to installed_table
+        for event in &events {
+            self.installed_table.update(event)?;
         }
 
         Ok(())
