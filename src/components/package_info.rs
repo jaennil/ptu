@@ -165,6 +165,10 @@ impl Component for PackageInfo {
         if self.package.build_date.is_some() {
             rows_with_heights.push(create_row("build date", &build_date_str, value_width));
         }
+        let install_date_str = self.package.install_date.map(format_timestamp).unwrap_or_default();
+        if self.package.install_date.is_some() {
+            rows_with_heights.push(create_row("install date", &install_date_str, value_width));
+        }
         // AUR-specific fields
         if self.package.votes.is_some() {
             rows_with_heights.push(create_row("votes", &votes_str, value_width));
