@@ -424,16 +424,18 @@ impl App {
             self.should_exit = true;
         }
 
-        // Handle tab switching (Alt+1/2, F1/F2)
+        // Handle tab switching (Alt+1/2, F1/F2, dvorak: Alt+ +/[)
         use ratatui::crossterm::event::KeyModifiers;
         tracing::trace!(code = ?key_event.code, modifiers = ?key_event.modifiers, "key event received");
         match (key_event.code, key_event.modifiers) {
             (KeyCode::Char('1'), KeyModifiers::ALT)
+            | (KeyCode::Char('+'), KeyModifiers::ALT) // dvorak for programmers
             | (KeyCode::F(1), KeyModifiers::NONE) => {
                 self.switch_tab(AppTab::Search);
                 return Ok(Vec::new());
             }
             (KeyCode::Char('2'), KeyModifiers::ALT)
+            | (KeyCode::Char('['), KeyModifiers::ALT) // dvorak for programmers
             | (KeyCode::F(2), KeyModifiers::NONE) => {
                 self.switch_tab(AppTab::Installed);
                 return Ok(Vec::new());
