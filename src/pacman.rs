@@ -111,7 +111,14 @@ impl Pacman {
         let mut packages = Vec::with_capacity(MAX_RESULTS);
 
         'outer: for db in self.handle.syncdbs() {
-            for pkg in db.search([package_name].iter())? {
+            let results = match db.search([package_name].iter()) {
+                Ok(r) => r,
+                Err(e) => {
+                    tracing::warn!(query = package_name, %e, "invalid search pattern (treated as regex by alpm), returning empty");
+                    return Ok(Vec::new());
+                }
+            };
+            for pkg in results {
                 packages.push(Package {
                     name: pkg.name().to_owned(),
                     source: db.name().to_owned(),
