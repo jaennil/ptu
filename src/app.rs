@@ -424,14 +424,17 @@ impl App {
             self.should_exit = true;
         }
 
-        // Handle tab switching (Alt+1 / Alt+2)
+        // Handle tab switching (Alt+1/2, F1/F2)
         use ratatui::crossterm::event::KeyModifiers;
+        tracing::trace!(code = ?key_event.code, modifiers = ?key_event.modifiers, "key event received");
         match (key_event.code, key_event.modifiers) {
-            (KeyCode::Char('1'), KeyModifiers::ALT) => {
+            (KeyCode::Char('1'), KeyModifiers::ALT)
+            | (KeyCode::F(1), KeyModifiers::NONE) => {
                 self.switch_tab(AppTab::Search);
                 return Ok(Vec::new());
             }
-            (KeyCode::Char('2'), KeyModifiers::ALT) => {
+            (KeyCode::Char('2'), KeyModifiers::ALT)
+            | (KeyCode::F(2), KeyModifiers::NONE) => {
                 self.switch_tab(AppTab::Installed);
                 return Ok(Vec::new());
             }
@@ -610,8 +613,8 @@ impl App {
         let installed_style = if active_tab == AppTab::Installed { active_style } else { inactive_style };
 
         let line = Line::from(vec![
-            Span::styled(" 1:Search ", search_style),
-            Span::styled(" 2:Installed ", installed_style),
+            Span::styled(" F1:Search ", search_style),
+            Span::styled(" F2:Installed ", installed_style),
         ]);
 
         frame.render_widget(line, area);
@@ -650,11 +653,11 @@ impl App {
             Line::from(""),
             Line::from(Span::styled(" Tabs", header_style)),
             Line::from(vec![
-                Span::styled("   Alt+1         ", key_style),
+                Span::styled("   F1 / Alt+1    ", key_style),
                 Span::styled("Search tab", desc_style),
             ]),
             Line::from(vec![
-                Span::styled("   Alt+2         ", key_style),
+                Span::styled("   F2 / Alt+2    ", key_style),
                 Span::styled("Installed tab", desc_style),
             ]),
             Line::from(""),
