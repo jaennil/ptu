@@ -57,6 +57,55 @@ impl Pacman {
         self.installed_cache.remove(name);
     }
 
+    pub(crate) fn get_installed_packages(&self) -> Vec<Package> {
+        tracing::debug!("loading all installed packages from localdb");
+        let mut packages = Vec::new();
+
+        for pkg in self.handle.localdb().pkgs() {
+            // Determine source by checking which syncdb contains the package
+            let source = self
+                .handle
+                .syncdbs()
+                .iter()
+                .find(|db| db.pkg(pkg.name()).is_ok())
+                .map(|db| db.name().to_string())
+                .unwrap_or_else(|| "aur".to_string());
+
+            packages.push(Package {
+                name: pkg.name().to_owned(),
+                source,
+                installed: true,
+                description: pkg.desc().unwrap_or("-").to_owned(),
+                version: pkg.version().to_string(),
+                filename: pkg.filename().unwrap_or("-").to_owned(),
+                base: pkg.base().unwrap_or("-").to_owned(),
+                url: pkg.url().unwrap_or("-").to_owned(),
+                packager: pkg.packager().unwrap_or("-").to_owned(),
+                md5sum: pkg.md5sum().unwrap_or("-").to_owned(),
+                sha256sum: pkg.sha256sum().unwrap_or("-").to_owned(),
+                arch: pkg.arch().unwrap_or("-").to_owned(),
+                size: pkg.isize(),
+                licenses: pkg.licenses().iter().map(|s| s.to_string()).collect(),
+                depends: pkg.depends().iter().map(|d| d.name().to_string()).collect(),
+                optdepends: pkg.optdepends().iter().map(|d| d.name().to_string()).collect(),
+                groups: pkg.groups().iter().map(|s| s.to_string()).collect(),
+                provides: pkg.provides().iter().map(|d| d.name().to_string()).collect(),
+                conflicts: pkg.conflicts().iter().map(|d| d.name().to_string()).collect(),
+                build_date: Some(pkg.build_date()),
+                install_date: Some(pkg.install_date().unwrap_or(0)),
+                matched_files: Vec::new(),
+                votes: None,
+                popularity: None,
+                out_of_date: None,
+                first_submitted: None,
+                last_modified: None,
+            });
+        }
+
+        tracing::debug!(count = packages.len(), "loaded installed packages");
+        packages
+    }
+
     pub(crate) fn search_package(&self, package_name: &str) -> eyre::Result<Vec<Package>> {
         const MAX_RESULTS: usize = 100;
         let mut packages = Vec::with_capacity(MAX_RESULTS);
@@ -84,6 +133,7 @@ impl Pacman {
                     provides: pkg.provides().iter().map(|d| d.name().to_string()).collect(),
                     conflicts: pkg.conflicts().iter().map(|d| d.name().to_string()).collect(),
                     build_date: Some(pkg.build_date()),
+                    install_date: None,
                     matched_files: Vec::new(),
                     votes: None,
                     popularity: None,
@@ -262,6 +312,7 @@ pub(crate) struct Package {
     pub(crate) provides: Vec<String>,
     pub(crate) conflicts: Vec<String>,
     pub(crate) build_date: Option<i64>,
+    pub(crate) install_date: Option<i64>,
     // File search results
     pub(crate) matched_files: Vec<String>,
     // AUR-specific fields

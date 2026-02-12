@@ -78,6 +78,7 @@ pub(crate) async fn search(query: &str, installed_packages: &HashSet<String>) ->
             provides: Vec::new(),
             conflicts: Vec::new(),
             build_date: None,
+            install_date: None,
             matched_files: Vec::new(),
             votes: Some(pkg.num_votes),
             popularity: Some(pkg.popularity),
