@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use color_eyre::eyre;
-use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseEvent, MouseEventKind};
+use ratatui::crossterm::event::{KeyEvent, MouseEvent, MouseEventKind};
 use ratatui::layout::{Constraint, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
@@ -10,6 +10,7 @@ use ratatui::Frame;
 
 use crate::action::Action;
 use crate::components::Component;
+use crate::config::{self, InstalledTableKeys};
 use crate::event::Event;
 use crate::pacman::{format_size, format_timestamp, Package};
 use crate::theme::Theme;
@@ -51,10 +52,11 @@ pub(crate) struct InstalledTable {
     active: bool,
     theme: Theme,
     selected_indices: HashSet<usize>,
+    keys: InstalledTableKeys,
 }
 
 impl InstalledTable {
-    pub(crate) fn new(packages: Vec<Package>) -> Self {
+    pub(crate) fn new(packages: Vec<Package>, keys: InstalledTableKeys) -> Self {
         tracing::debug!(count = packages.len(), "creating InstalledTable");
         let mut table = Self {
             packages,
@@ -65,6 +67,7 @@ impl InstalledTable {
             active: false,
             theme: Theme::default(),
             selected_indices: HashSet::new(),
+            keys,
         };
         table.resort();
         if !table.sorted_indices.is_empty() {
@@ -268,93 +271,66 @@ impl Component for InstalledTable {
 
         let mut actions = Vec::new();
 
-        match key_event {
-            KeyEvent {
-                modifiers: KeyModifiers::NONE,
-                code,
-                ..
-            } => match code {
-                KeyCode::Char('s') => {
-                    self.sort_column = self.sort_column.next();
-                    tracing::debug!(column = ?self.sort_column, "cycling sort column");
-                    // Preserve selected package across resort
-                    let selected_pkg_idx = self.selected_package_index();
-                    self.resort();
-                    // Restore selection position
-                    if let Some(pkg_idx) = selected_pkg_idx {
-                        if let Some(new_pos) = self.sorted_indices.iter().position(|&i| i == pkg_idx) {
-                            self.state.select(Some(new_pos));
-                        }
-                    }
+        if config::key_matches(key_event, &self.keys.cycle_sort) {
+            self.sort_column = self.sort_column.next();
+            tracing::debug!(column = ?self.sort_column, "cycling sort column");
+            let selected_pkg_idx = self.selected_package_index();
+            self.resort();
+            if let Some(pkg_idx) = selected_pkg_idx {
+                if let Some(new_pos) = self.sorted_indices.iter().position(|&i| i == pkg_idx) {
+                    self.state.select(Some(new_pos));
                 }
-                KeyCode::Char('j') => {
-                    self.next();
-                    if let Some(package) = self.get_selected_package() {
-                        actions.push(Action::SelectPackage(Box::new(package.clone())));
-                    }
+            }
+        } else if config::key_matches(key_event, &self.keys.toggle_sort_direction) {
+            self.ascending = !self.ascending;
+            tracing::debug!(ascending = self.ascending, "toggling sort direction");
+            let selected_pkg_idx = self.selected_package_index();
+            self.resort();
+            if let Some(pkg_idx) = selected_pkg_idx {
+                if let Some(new_pos) = self.sorted_indices.iter().position(|&i| i == pkg_idx) {
+                    self.state.select(Some(new_pos));
                 }
-                KeyCode::Char('k') => {
-                    self.previous();
-                    if let Some(package) = self.get_selected_package() {
-                        actions.push(Action::SelectPackage(Box::new(package.clone())));
-                    }
-                }
-                KeyCode::Char('g') => {
-                    self.go_to_first();
-                    if let Some(package) = self.get_selected_package() {
-                        actions.push(Action::SelectPackage(Box::new(package.clone())));
-                    }
-                }
-                KeyCode::Char('r') => {
-                    if let Some(package) = self.get_selected_package() {
-                        actions.push(Action::RemovePackage {
-                            name: package.name.clone(),
-                            source: package.source.clone(),
-                        });
-                    }
-                }
-                KeyCode::Char(' ') => {
-                    self.toggle_selection();
-                }
-                _ => {}
-            },
-            KeyEvent {
-                modifiers: KeyModifiers::SHIFT,
-                code,
-                ..
-            } => match code {
-                KeyCode::Char('S') => {
-                    self.ascending = !self.ascending;
-                    tracing::debug!(ascending = self.ascending, "toggling sort direction");
-                    let selected_pkg_idx = self.selected_package_index();
-                    self.resort();
-                    if let Some(pkg_idx) = selected_pkg_idx {
-                        if let Some(new_pos) = self.sorted_indices.iter().position(|&i| i == pkg_idx) {
-                            self.state.select(Some(new_pos));
-                        }
-                    }
-                }
-                KeyCode::Char('G') => {
-                    self.go_to_last();
-                    if let Some(package) = self.get_selected_package() {
-                        actions.push(Action::SelectPackage(Box::new(package.clone())));
-                    }
-                }
-                KeyCode::Char('R') => {
-                    let selected = self.get_selected_packages();
-                    if !selected.is_empty() {
-                        tracing::info!(count = selected.len(), "batch remove from installed table");
-                        actions.push(Action::RemovePackages { packages: selected });
-                    } else if let Some(package) = self.get_selected_package() {
-                        actions.push(Action::RemovePackage {
-                            name: package.name.clone(),
-                            source: package.source.clone(),
-                        });
-                    }
-                }
-                _ => {}
-            },
-            _ => {}
+            }
+        } else if config::key_matches(key_event, &self.keys.next) {
+            self.next();
+            if let Some(package) = self.get_selected_package() {
+                actions.push(Action::SelectPackage(Box::new(package.clone())));
+            }
+        } else if config::key_matches(key_event, &self.keys.previous) {
+            self.previous();
+            if let Some(package) = self.get_selected_package() {
+                actions.push(Action::SelectPackage(Box::new(package.clone())));
+            }
+        } else if config::key_matches(key_event, &self.keys.first) {
+            self.go_to_first();
+            if let Some(package) = self.get_selected_package() {
+                actions.push(Action::SelectPackage(Box::new(package.clone())));
+            }
+        } else if config::key_matches(key_event, &self.keys.last) {
+            self.go_to_last();
+            if let Some(package) = self.get_selected_package() {
+                actions.push(Action::SelectPackage(Box::new(package.clone())));
+            }
+        } else if config::key_matches(key_event, &self.keys.remove) {
+            if let Some(package) = self.get_selected_package() {
+                actions.push(Action::RemovePackage {
+                    name: package.name.clone(),
+                    source: package.source.clone(),
+                });
+            }
+        } else if config::key_matches(key_event, &self.keys.batch_remove) {
+            let selected = self.get_selected_packages();
+            if !selected.is_empty() {
+                tracing::info!(count = selected.len(), "batch remove from installed table");
+                actions.push(Action::RemovePackages { packages: selected });
+            } else if let Some(package) = self.get_selected_package() {
+                actions.push(Action::RemovePackage {
+                    name: package.name.clone(),
+                    source: package.source.clone(),
+                });
+            }
+        } else if config::key_matches(key_event, &self.keys.multi_select) {
+            self.toggle_selection();
         }
 
         Ok(Some(actions))

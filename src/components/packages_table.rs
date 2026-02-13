@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use color_eyre::eyre;
-use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseEvent, MouseEventKind};
+use ratatui::crossterm::event::{KeyEvent, MouseEvent, MouseEventKind};
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
@@ -10,6 +10,7 @@ use ratatui::Frame;
 
 use crate::action::Action;
 use crate::components::Component;
+use crate::config::{self, PackagesTableKeys};
 use crate::event::Event;
 use crate::filter::{InstallFilter, PackageFilter, SourceFilter};
 use crate::layout::{FILTER_HEIGHT, INPUT_HEIGHT, LEFT_PANEL_PERCENT};
@@ -20,7 +21,6 @@ const COLOR_SELECTED: Color = Color::Rgb(255, 165, 0); // Orange
 const COLOR_FILTER_ACTIVE: Color = Color::Rgb(0, 255, 127); // Bright green
 const COLOR_FILTER_INACTIVE: Color = Color::Rgb(128, 128, 128); // Dim gray
 
-#[derive(Default)]
 pub(crate) struct PackagesTable {
     state: TableState,
     all_packages: Vec<Package>,
@@ -29,9 +29,23 @@ pub(crate) struct PackagesTable {
     selected_indices: HashSet<usize>,
     filter: PackageFilter,
     filter_mode: bool,
+    keys: PackagesTableKeys,
 }
 
 impl PackagesTable {
+    pub(crate) fn new(keys: PackagesTableKeys) -> Self {
+        Self {
+            state: TableState::default(),
+            all_packages: Vec::new(),
+            theme: Theme::default(),
+            active: false,
+            selected_indices: HashSet::new(),
+            filter: PackageFilter::default(),
+            filter_mode: false,
+            keys,
+        }
+    }
+
     /// Returns packages that match the current filter
     fn filtered_packages(&self) -> Vec<(usize, &Package)> {
         self.all_packages
@@ -232,157 +246,124 @@ impl Component for PackagesTable {
 
         // Handle filter mode keys
         if self.filter_mode {
-            match key_event.code {
-                KeyCode::Char('i') => {
-                    tracing::debug!("filter mode: cycling install filter");
-                    self.filter.install.cycle();
-                    self.reset_selection();
-                    self.clear_selection();
-                    self.filter_mode = false;
-                    if let Some(package) = self.get_selected_package() {
-                        actions.push(Action::SelectPackage(Box::new(package.clone())));
-                    }
+            if config::key_matches(key_event, &self.keys.filter.cycle_install) {
+                tracing::debug!("filter mode: cycling install filter");
+                self.filter.install.cycle();
+                self.reset_selection();
+                self.clear_selection();
+                self.filter_mode = false;
+                if let Some(package) = self.get_selected_package() {
+                    actions.push(Action::SelectPackage(Box::new(package.clone())));
                 }
-                KeyCode::Char('a') => {
-                    tracing::debug!("filter mode: toggling AUR filter");
-                    self.filter.source = if self.filter.source == SourceFilter::Aur {
-                        SourceFilter::All
-                    } else {
-                        SourceFilter::Aur
-                    };
-                    self.reset_selection();
-                    self.clear_selection();
-                    self.filter_mode = false;
-                    if let Some(package) = self.get_selected_package() {
-                        actions.push(Action::SelectPackage(Box::new(package.clone())));
-                    }
+            } else if config::key_matches(key_event, &self.keys.filter.toggle_aur) {
+                tracing::debug!("filter mode: toggling AUR filter");
+                self.filter.source = if self.filter.source == SourceFilter::Aur {
+                    SourceFilter::All
+                } else {
+                    SourceFilter::Aur
+                };
+                self.reset_selection();
+                self.clear_selection();
+                self.filter_mode = false;
+                if let Some(package) = self.get_selected_package() {
+                    actions.push(Action::SelectPackage(Box::new(package.clone())));
                 }
-                KeyCode::Char('p') => {
-                    tracing::debug!("filter mode: toggling Pacman filter");
-                    self.filter.source = if self.filter.source == SourceFilter::Pacman {
-                        SourceFilter::All
-                    } else {
-                        SourceFilter::Pacman
-                    };
-                    self.reset_selection();
-                    self.clear_selection();
-                    self.filter_mode = false;
-                    if let Some(package) = self.get_selected_package() {
-                        actions.push(Action::SelectPackage(Box::new(package.clone())));
-                    }
+            } else if config::key_matches(key_event, &self.keys.filter.toggle_pacman) {
+                tracing::debug!("filter mode: toggling Pacman filter");
+                self.filter.source = if self.filter.source == SourceFilter::Pacman {
+                    SourceFilter::All
+                } else {
+                    SourceFilter::Pacman
+                };
+                self.reset_selection();
+                self.clear_selection();
+                self.filter_mode = false;
+                if let Some(package) = self.get_selected_package() {
+                    actions.push(Action::SelectPackage(Box::new(package.clone())));
                 }
-                KeyCode::Char('c') => {
-                    tracing::debug!("filter mode: clearing all filters");
-                    self.filter.clear();
-                    self.reset_selection();
-                    self.clear_selection();
-                    self.filter_mode = false;
-                    if let Some(package) = self.get_selected_package() {
-                        actions.push(Action::SelectPackage(Box::new(package.clone())));
-                    }
+            } else if config::key_matches(key_event, &self.keys.filter.clear_all) {
+                tracing::debug!("filter mode: clearing all filters");
+                self.filter.clear();
+                self.reset_selection();
+                self.clear_selection();
+                self.filter_mode = false;
+                if let Some(package) = self.get_selected_package() {
+                    actions.push(Action::SelectPackage(Box::new(package.clone())));
                 }
-                KeyCode::Esc => {
-                    tracing::debug!("filter mode: exiting");
-                    self.filter_mode = false;
-                }
-                _ => {
-                    // Any other key exits filter mode without action
-                    self.filter_mode = false;
-                }
+            } else if config::key_matches(key_event, &self.keys.filter.exit) {
+                tracing::debug!("filter mode: exiting");
+                self.filter_mode = false;
+            } else {
+                // Any other key exits filter mode without action
+                self.filter_mode = false;
             }
             return Ok(Some(actions));
         }
 
         // Normal mode key handling
-        match key_event {
-            KeyEvent {
-                modifiers: KeyModifiers::NONE,
-                code,
-                ..
-            } => match code {
-                KeyCode::Char('f') => {
-                    tracing::debug!("entering filter mode");
-                    self.filter_mode = true;
-                }
-                KeyCode::Char('j') => {
-                    self.next();
-                    if let Some(package) = self.get_selected_package() {
-                        actions.push(Action::SelectPackage(Box::new(package.clone())));
-                    }
-                }
-                KeyCode::Char('k') => {
-                    self.previous();
-                    if let Some(package) = self.get_selected_package() {
-                        actions.push(Action::SelectPackage(Box::new(package.clone())));
-                    }
-                }
-                KeyCode::Char('g') => {
-                    self.go_to_first();
-                    if let Some(package) = self.get_selected_package() {
-                        actions.push(Action::SelectPackage(Box::new(package.clone())));
-                    }
-                }
-                KeyCode::Char('i') => {
-                    if let Some(package) = self.get_selected_package() {
-                        actions.push(Action::InstallPackage {
-                            name: package.name.clone(),
-                            source: package.source.clone(),
-                        });
-                    }
-                }
-                KeyCode::Char('r') => {
-                    if let Some(package) = self.get_selected_package() {
-                        actions.push(Action::RemovePackage {
-                            name: package.name.clone(),
-                            source: package.source.clone(),
-                        });
-                    }
-                }
-                KeyCode::Char(' ') => {
-                    self.toggle_selection();
-                }
-                _ => {}
-            },
-            KeyEvent {
-                modifiers: KeyModifiers::SHIFT,
-                code,
-                ..
-            } => match code {
-                KeyCode::Char('G') => {
-                    self.go_to_last();
-                    if let Some(package) = self.get_selected_package() {
-                        actions.push(Action::SelectPackage(Box::new(package.clone())));
-                    }
-                }
-                KeyCode::Char('I') => {
-                    let selected = self.get_selected_packages();
-                    if !selected.is_empty() {
-                        tracing::info!(count = selected.len(), "batch install selected packages");
-                        actions.push(Action::InstallPackages { packages: selected });
-                    } else if let Some(package) = self.get_selected_package() {
-                        // Fallback to single update+install when no selection
-                        actions.push(Action::UpdateInstallPackage {
-                            name: package.name.clone(),
-                            source: package.source.clone(),
-                        });
-                    }
-                }
-                KeyCode::Char('R') => {
-                    let selected = self.get_selected_packages();
-                    if !selected.is_empty() {
-                        tracing::info!(count = selected.len(), "batch remove selected packages");
-                        actions.push(Action::RemovePackages { packages: selected });
-                    } else if let Some(package) = self.get_selected_package() {
-                        // Fallback to single remove when no selection
-                        actions.push(Action::RemovePackage {
-                            name: package.name.clone(),
-                            source: package.source.clone(),
-                        });
-                    }
-                }
-                _ => {}
-            },
-            _ => {}
+        if config::key_matches(key_event, &self.keys.filter_mode) {
+            tracing::debug!("entering filter mode");
+            self.filter_mode = true;
+        } else if config::key_matches(key_event, &self.keys.next) {
+            self.next();
+            if let Some(package) = self.get_selected_package() {
+                actions.push(Action::SelectPackage(Box::new(package.clone())));
+            }
+        } else if config::key_matches(key_event, &self.keys.previous) {
+            self.previous();
+            if let Some(package) = self.get_selected_package() {
+                actions.push(Action::SelectPackage(Box::new(package.clone())));
+            }
+        } else if config::key_matches(key_event, &self.keys.first) {
+            self.go_to_first();
+            if let Some(package) = self.get_selected_package() {
+                actions.push(Action::SelectPackage(Box::new(package.clone())));
+            }
+        } else if config::key_matches(key_event, &self.keys.last) {
+            self.go_to_last();
+            if let Some(package) = self.get_selected_package() {
+                actions.push(Action::SelectPackage(Box::new(package.clone())));
+            }
+        } else if config::key_matches(key_event, &self.keys.install) {
+            if let Some(package) = self.get_selected_package() {
+                actions.push(Action::InstallPackage {
+                    name: package.name.clone(),
+                    source: package.source.clone(),
+                });
+            }
+        } else if config::key_matches(key_event, &self.keys.remove) {
+            if let Some(package) = self.get_selected_package() {
+                actions.push(Action::RemovePackage {
+                    name: package.name.clone(),
+                    source: package.source.clone(),
+                });
+            }
+        } else if config::key_matches(key_event, &self.keys.batch_install) {
+            let selected = self.get_selected_packages();
+            if !selected.is_empty() {
+                tracing::info!(count = selected.len(), "batch install selected packages");
+                actions.push(Action::InstallPackages { packages: selected });
+            } else if let Some(package) = self.get_selected_package() {
+                // Fallback to single update+install when no selection
+                actions.push(Action::UpdateInstallPackage {
+                    name: package.name.clone(),
+                    source: package.source.clone(),
+                });
+            }
+        } else if config::key_matches(key_event, &self.keys.batch_remove) {
+            let selected = self.get_selected_packages();
+            if !selected.is_empty() {
+                tracing::info!(count = selected.len(), "batch remove selected packages");
+                actions.push(Action::RemovePackages { packages: selected });
+            } else if let Some(package) = self.get_selected_package() {
+                // Fallback to single remove when no selection
+                actions.push(Action::RemovePackage {
+                    name: package.name.clone(),
+                    source: package.source.clone(),
+                });
+            }
+        } else if config::key_matches(key_event, &self.keys.multi_select) {
+            self.toggle_selection();
         }
 
         Ok(Some(actions))

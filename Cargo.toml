@@ -13,4 +13,5 @@ textwrap = "0.16.2"
 tokio = { version = "1", features = ["rt-multi-thread", "sync"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+toml = "0.8"
 tracing-appender = "0.2"

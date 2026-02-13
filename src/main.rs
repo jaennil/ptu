@@ -2,6 +2,7 @@ mod action;
 mod app;
 mod aur;
 mod components;
+mod config;
 mod event;
 mod filter;
 mod layout;
@@ -21,7 +22,8 @@ fn main() -> eyre::Result<()> {
 
     tracing::info!("starting ptu");
 
-    let mut app = App::new()?;
+    let keymap = config::load()?;
+    let mut app = App::new(keymap)?;
     app.run()?;
 
     tracing::info!("ptu exited successfully");

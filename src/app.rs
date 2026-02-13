@@ -9,13 +9,14 @@ use crate::components::installed_table::InstalledTable;
 use crate::components::package_info::PackageInfo;
 use crate::components::packages_table::PackagesTable;
 use crate::components::{package_input::PackageInput, Component};
+use crate::config::{self, GlobalKeys, HelpKeys, Keymap, TabsKeys};
 use crate::layout::{FILTER_HEIGHT, INPUT_HEIGHT, LEFT_PANEL_PERCENT};
 use crate::pacman::{self, Package, Pacman};
 use crate::tui::Tui;
 
 use color_eyre::eyre;
 use ratatui::crossterm;
-use ratatui::crossterm::event::{Event, KeyCode, KeyEvent, MouseEvent, MouseEventKind};
+use ratatui::crossterm::event::{Event, KeyEvent, MouseEvent, MouseEventKind};
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
@@ -48,10 +49,13 @@ pub(crate) struct App {
     package_info_area: Rect,
     show_help: bool,
     help_scroll: u16,
+    global_keys: GlobalKeys,
+    tabs_keys: TabsKeys,
+    help_keys: HelpKeys,
 }
 
 impl App {
-    pub(crate) fn new() -> eyre::Result<Self> {
+    pub(crate) fn new(keymap: Keymap) -> eyre::Result<Self> {
         let tui = Tui::new()?;
         let should_exit = Default::default();
         let pacman = Pacman::new()?;
@@ -66,19 +70,19 @@ impl App {
 
         tracing::debug!("tokio runtime created for async searches");
 
-        let mut package_input = PackageInput::default();
+        let mut package_input = PackageInput::new(keymap.search_input);
         package_input.set_active(true); // Start with focus on input
 
-        let mut packages_table = PackagesTable::default();
+        let mut packages_table = PackagesTable::new(keymap.packages_table);
         packages_table.set_active(false);
 
-        let mut package_info = PackageInfo::default();
+        let mut package_info = PackageInfo::new(keymap.package_info);
         package_info.set_active(false);
 
         // Load installed packages for Installed tab
         let installed_packages = pacman.get_installed_packages();
         tracing::info!(count = installed_packages.len(), "loaded installed packages for Installed tab");
-        let installed_table = InstalledTable::new(installed_packages);
+        let installed_table = InstalledTable::new(installed_packages, keymap.installed_table);
 
         Ok(Self {
             tui,
@@ -102,6 +106,9 @@ impl App {
             package_info_area: Rect::default(),
             show_help: false,
             help_scroll: 0,
+            global_keys: keymap.global,
+            tabs_keys: keymap.tabs,
+            help_keys: keymap.help,
         })
     }
 
@@ -391,107 +398,89 @@ impl App {
     fn handle_key_event(&mut self, key_event: &KeyEvent) -> eyre::Result<Vec<Action>> {
         // When help is visible, intercept all keys
         if self.show_help {
-            match key_event.code {
-                KeyCode::Char('?') | KeyCode::Esc => {
-                    tracing::debug!("closing help window");
-                    self.show_help = false;
-                    self.help_scroll = 0;
-                }
-                KeyCode::Char('j') => {
-                    self.help_scroll = self.help_scroll.saturating_add(1);
-                    tracing::trace!(scroll = self.help_scroll, "help scroll down");
-                }
-                KeyCode::Char('k') => {
-                    self.help_scroll = self.help_scroll.saturating_sub(1);
-                    tracing::trace!(scroll = self.help_scroll, "help scroll up");
-                }
-                _ => {
-                    tracing::trace!(key = ?key_event.code, "key swallowed by help window");
-                }
+            if config::key_matches(key_event, &self.help_keys.close) {
+                tracing::debug!("closing help window");
+                self.show_help = false;
+                self.help_scroll = 0;
+            } else if config::key_matches(key_event, &self.help_keys.scroll_down) {
+                self.help_scroll = self.help_scroll.saturating_add(1);
+                tracing::trace!(scroll = self.help_scroll, "help scroll down");
+            } else if config::key_matches(key_event, &self.help_keys.scroll_up) {
+                self.help_scroll = self.help_scroll.saturating_sub(1);
+                tracing::trace!(scroll = self.help_scroll, "help scroll up");
+            } else {
+                tracing::trace!(key = ?key_event.code, "key swallowed by help window");
             }
             return Ok(Vec::new());
         }
 
-        // Open help with ?
-        if key_event.code == KeyCode::Char('?') {
+        // Open help
+        if config::key_matches(key_event, &self.global_keys.toggle_help) {
             tracing::debug!("opening help window");
             self.show_help = true;
             self.help_scroll = 0;
             return Ok(Vec::new());
         }
 
-        if key_event.code == KeyCode::Esc {
+        // Quit
+        if config::key_matches(key_event, &self.global_keys.quit) {
             self.should_exit = true;
         }
 
-        // Handle tab switching (Alt+1/2, F1/F2, dvorak: Alt+ +/[)
-        use ratatui::crossterm::event::KeyModifiers;
         tracing::trace!(code = ?key_event.code, modifiers = ?key_event.modifiers, "key event received");
-        match (key_event.code, key_event.modifiers) {
-            (KeyCode::Char('1'), KeyModifiers::ALT)
-            | (KeyCode::Char('+'), KeyModifiers::ALT) // dvorak for programmers
-            | (KeyCode::F(1), KeyModifiers::NONE) => {
-                self.switch_tab(AppTab::Search);
-                return Ok(Vec::new());
-            }
-            (KeyCode::Char('2'), KeyModifiers::ALT)
-            | (KeyCode::Char('['), KeyModifiers::ALT) // dvorak for programmers
-            | (KeyCode::F(2), KeyModifiers::NONE) => {
-                self.switch_tab(AppTab::Installed);
-                return Ok(Vec::new());
-            }
-            _ => {}
+
+        // Handle tab switching
+        if config::key_matches(key_event, &self.tabs_keys.search) {
+            self.switch_tab(AppTab::Search);
+            return Ok(Vec::new());
+        }
+        if config::key_matches(key_event, &self.tabs_keys.installed) {
+            self.switch_tab(AppTab::Installed);
+            return Ok(Vec::new());
         }
 
         // Handle focus switching (tab-aware)
         let info_focus = self.num_focusable() - 1; // info panel is always last
-        match (key_event.code, key_event.modifiers) {
-            (KeyCode::Tab, KeyModifiers::NONE) => {
-                self.cycle_focus();
-                return Ok(Vec::new());
+
+        if config::key_matches(key_event, &self.global_keys.cycle_focus) {
+            self.cycle_focus();
+            return Ok(Vec::new());
+        }
+        if config::key_matches(key_event, &self.global_keys.focus_down) {
+            match self.active_tab {
+                AppTab::Search => {
+                    if self.focused < 1 {
+                        self.set_focus(1);
+                    }
+                }
+                AppTab::Installed => {
+                    if self.focused != 0 {
+                        self.set_focus(0);
+                    }
+                }
             }
-            // Alt+j - focus down (to table/list)
-            (KeyCode::Char('j'), KeyModifiers::ALT) => {
+            return Ok(Vec::new());
+        }
+        if config::key_matches(key_event, &self.global_keys.focus_up) {
+            if self.focused > 0 {
+                self.set_focus(0);
+            }
+            return Ok(Vec::new());
+        }
+        if config::key_matches(key_event, &self.global_keys.focus_right) {
+            if self.focused != info_focus {
+                self.set_focus(info_focus);
+            }
+            return Ok(Vec::new());
+        }
+        if config::key_matches(key_event, &self.global_keys.focus_left) {
+            if self.focused == info_focus {
                 match self.active_tab {
-                    AppTab::Search => {
-                        if self.focused < 1 {
-                            self.set_focus(1);
-                        }
-                    }
-                    AppTab::Installed => {
-                        // Only table and info, table is 0
-                        if self.focused != 0 {
-                            self.set_focus(0);
-                        }
-                    }
+                    AppTab::Search => self.set_focus(1),
+                    AppTab::Installed => self.set_focus(0),
                 }
-                return Ok(Vec::new());
             }
-            // Alt+k - focus up (to input/first)
-            (KeyCode::Char('k'), KeyModifiers::ALT) => {
-                if self.focused > 0 {
-                    self.set_focus(0);
-                }
-                return Ok(Vec::new());
-            }
-            // Alt+l - focus right (to info panel)
-            (KeyCode::Char('l'), KeyModifiers::ALT) => {
-                if self.focused != info_focus {
-                    self.set_focus(info_focus);
-                }
-                return Ok(Vec::new());
-            }
-            // Alt+h - focus left (from info to table)
-            (KeyCode::Char('h'), KeyModifiers::ALT) => {
-                if self.focused == info_focus {
-                    match self.active_tab {
-                        AppTab::Search => self.set_focus(1),
-                        AppTab::Installed => self.set_focus(0),
-                    }
-                }
-                return Ok(Vec::new());
-            }
-            _ => {}
+            return Ok(Vec::new());
         }
 
         let mut actions = Vec::new();

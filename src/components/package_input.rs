@@ -9,6 +9,7 @@ use ratatui::Frame;
 
 use crate::action::Action;
 use crate::components::Component;
+use crate::config::{self, SearchInputKeys};
 use crate::layout::{INPUT_HEIGHT, LEFT_PANEL_PERCENT};
 use crate::pacman::SearchMode;
 use crate::theme::Theme;
@@ -23,10 +24,11 @@ pub(crate) struct PackageInput {
     pending_aur_search: bool,
     search_mode: SearchMode,
     loading: bool,
+    keys: SearchInputKeys,
 }
 
-impl Default for PackageInput {
-    fn default() -> Self {
+impl PackageInput {
+    pub(crate) fn new(keys: SearchInputKeys) -> Self {
         Self {
             text: Default::default(),
             theme: Default::default(),
@@ -35,6 +37,7 @@ impl Default for PackageInput {
             pending_aur_search: false,
             search_mode: SearchMode::Package,
             loading: false,
+            keys,
         }
     }
 }
@@ -70,8 +73,8 @@ impl Component for PackageInput {
             return Ok(None);
         }
 
-        // Ctrl+f: toggle search mode (keep text)
-        if key_event.modifiers == KeyModifiers::CONTROL && key_event.code == KeyCode::Char('f') {
+        // Toggle search mode
+        if config::key_matches(key_event, &self.keys.toggle_search_mode) {
             self.search_mode = match self.search_mode {
                 SearchMode::Package => {
                     tracing::info!("switched to file search mode");
@@ -97,43 +100,24 @@ impl Component for PackageInput {
 
         // In File mode, Enter triggers search
         if self.search_mode == SearchMode::File {
-            match *key_event {
-                KeyEvent {
-                    modifiers: KeyModifiers::NONE,
-                    code: KeyCode::Char(char),
-                    ..
-                } => {
-                    self.text.push(char);
+            if config::key_matches(key_event, &self.keys.search_files) {
+                if !self.text.is_empty() {
+                    tracing::info!(query = %self.text, "file search triggered via Enter");
+                    return Ok(Some(vec![Action::SearchFile(self.text.clone())]));
                 }
-                KeyEvent {
-                    modifiers: KeyModifiers::NONE,
-                    code: KeyCode::Backspace,
-                    ..
-                } => {
-                    self.text.pop();
+            } else if config::key_matches(key_event, &self.keys.delete_word) {
+                if let Some((prefix, _)) = self.text.rsplit_once(' ') {
+                    self.text = prefix.to_string();
+                } else {
+                    self.text.clear();
                 }
-                KeyEvent {
-                    modifiers: KeyModifiers::CONTROL,
-                    code: KeyCode::Char('w'),
-                    ..
-                } => {
-                    if let Some((prefix, _)) = self.text.rsplit_once(' ') {
-                        self.text = prefix.to_string();
-                    } else {
-                        self.text.clear();
-                    }
+            } else if config::key_matches(key_event, &self.keys.delete_char) {
+                self.text.pop();
+            } else if let KeyCode::Char(c) = key_event.code {
+                // Character input catchall (not configurable)
+                if key_event.modifiers.is_empty() || key_event.modifiers == KeyModifiers::SHIFT {
+                    self.text.push(c);
                 }
-                KeyEvent {
-                    modifiers: KeyModifiers::NONE,
-                    code: KeyCode::Enter,
-                    ..
-                } => {
-                    if !self.text.is_empty() {
-                        tracing::info!(query = %self.text, "file search triggered via Enter");
-                        return Ok(Some(vec![Action::SearchFile(self.text.clone())]));
-                    }
-                }
-                _ => {}
             }
             return Ok(Some(Vec::new()));
         }
@@ -141,36 +125,22 @@ impl Component for PackageInput {
         // Package mode: instant search per keystroke
         let mut text_changed = false;
 
-        match *key_event {
-            KeyEvent {
-                modifiers: KeyModifiers::NONE,
-                code: KeyCode::Char(char),
-                ..
-            } => {
-                self.text.push(char);
+        if config::key_matches(key_event, &self.keys.delete_word) {
+            if let Some((prefix, _)) = self.text.rsplit_once(' ') {
+                self.text = prefix.to_string();
+            } else {
+                self.text.clear();
+            }
+            text_changed = true;
+        } else if config::key_matches(key_event, &self.keys.delete_char) {
+            self.text.pop();
+            text_changed = true;
+        } else if let KeyCode::Char(c) = key_event.code {
+            // Character input catchall (not configurable)
+            if key_event.modifiers.is_empty() || key_event.modifiers == KeyModifiers::SHIFT {
+                self.text.push(c);
                 text_changed = true;
             }
-            KeyEvent {
-                modifiers: KeyModifiers::NONE,
-                code: KeyCode::Backspace,
-                ..
-            } => {
-                self.text.pop();
-                text_changed = true;
-            }
-            KeyEvent {
-                modifiers: KeyModifiers::CONTROL,
-                code: KeyCode::Char('w'),
-                ..
-            } => {
-                if let Some((prefix, _)) = self.text.rsplit_once(' ') {
-                    self.text = prefix.to_string();
-                } else {
-                    self.text.clear();
-                }
-                text_changed = true;
-            }
-            _ => {}
         }
 
         if text_changed {

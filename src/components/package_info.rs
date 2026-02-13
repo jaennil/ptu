@@ -1,6 +1,6 @@
 use color_eyre::eyre;
 use ratatui::{
-    crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseEvent, MouseEventKind},
+    crossterm::event::{KeyEvent, MouseEvent, MouseEventKind},
     layout::{Constraint, Layout, Rect},
     style::Style,
     text::Text,
@@ -12,13 +12,13 @@ use textwrap::wrap;
 use crate::{
     action::Action,
     components::Component,
+    config::{self, PackageInfoKeys},
     event::Event,
     layout::{LABEL_WIDTH, LEFT_PANEL_PERCENT},
     pacman::{format_size, format_timestamp, Package},
     theme::Theme,
 };
 
-#[derive(Default)]
 pub(crate) struct PackageInfo {
     package: Package,
     theme: Theme,
@@ -26,6 +26,7 @@ pub(crate) struct PackageInfo {
     scroll_state: TableState,
     total_rows: usize,
     total_visual_height: u16,
+    keys: PackageInfoKeys,
 }
 
 fn create_row<'a>(label: &'a str, value: &'a str, width: usize) -> (Row<'a>, u16) {
@@ -41,6 +42,18 @@ fn create_row<'a>(label: &'a str, value: &'a str, width: usize) -> (Row<'a>, u16
 }
 
 impl PackageInfo {
+    pub(crate) fn new(keys: PackageInfoKeys) -> Self {
+        Self {
+            package: Package::default(),
+            theme: Theme::default(),
+            active: false,
+            scroll_state: TableState::default(),
+            total_rows: 0,
+            total_visual_height: 0,
+            keys,
+        }
+    }
+
     fn scroll_down(&mut self) {
         let max_offset = self.total_rows.saturating_sub(1);
         let current = self.scroll_state.offset();
@@ -61,48 +74,25 @@ impl Component for PackageInfo {
             return Ok(None);
         }
 
-        match key_event {
-            KeyEvent {
-                modifiers: KeyModifiers::NONE,
-                code: KeyCode::Char('j'),
-                ..
-            } => self.scroll_down(),
-            KeyEvent {
-                modifiers: KeyModifiers::NONE,
-                code: KeyCode::Char('k'),
-                ..
-            } => self.scroll_up(),
-            KeyEvent {
-                modifiers: KeyModifiers::CONTROL,
-                code: KeyCode::Char('d'),
-                ..
-            } => {
-                for _ in 0..10 {
-                    self.scroll_down();
-                }
+        if config::key_matches(key_event, &self.keys.scroll_down) {
+            self.scroll_down();
+        } else if config::key_matches(key_event, &self.keys.scroll_up) {
+            self.scroll_up();
+        } else if config::key_matches(key_event, &self.keys.page_down) {
+            for _ in 0..10 {
+                self.scroll_down();
             }
-            KeyEvent {
-                modifiers: KeyModifiers::CONTROL,
-                code: KeyCode::Char('u'),
-                ..
-            } => {
-                for _ in 0..10 {
-                    self.scroll_up();
-                }
+        } else if config::key_matches(key_event, &self.keys.page_up) {
+            for _ in 0..10 {
+                self.scroll_up();
             }
-            KeyEvent {
-                modifiers: KeyModifiers::NONE,
-                code: KeyCode::Char('o'),
-                ..
-            } => {
-                if !self.package.url.is_empty() {
-                    tracing::info!(url = %self.package.url, "opening package URL in browser");
-                    return Ok(Some(vec![Action::OpenUrl(self.package.url.clone())]));
-                } else {
-                    tracing::debug!("no URL available for this package");
-                }
+        } else if config::key_matches(key_event, &self.keys.open_url) {
+            if !self.package.url.is_empty() {
+                tracing::info!(url = %self.package.url, "opening package URL in browser");
+                return Ok(Some(vec![Action::OpenUrl(self.package.url.clone())]));
+            } else {
+                tracing::debug!("no URL available for this package");
             }
-            _ => {}
         }
 
         Ok(None)
