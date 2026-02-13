@@ -606,12 +606,97 @@ fn config_path() -> PathBuf {
 // Public load function
 // ---------------------------------------------------------------------------
 
+const DEFAULT_CONFIG: &str = r#"# ptu keybindings configuration
+# Customize any keybinding below. Delete a line to use the default.
+#
+# Key format:
+#   Single char:    "j", "?", "G", "+"
+#   With modifier:  "Ctrl+f", "Alt+j", "Shift+G"
+#   Special keys:   "Esc", "Tab", "Enter", "Backspace", "Space", "F1".."F12"
+#   Multiple keys:  ["F1", "Alt+1"]
+
+[keys.global]
+toggle_help = "?"
+quit = "Esc"
+cycle_focus = "Tab"
+focus_down = "Alt+j"
+focus_up = "Alt+k"
+focus_right = "Alt+l"
+focus_left = "Alt+h"
+
+[keys.tabs]
+search = ["F1", "Alt+1", "Alt++"]
+installed = ["F2", "Alt+2", "Alt+["]
+
+[keys.search_input]
+toggle_search_mode = "Ctrl+f"
+search_files = "Enter"
+delete_word = "Ctrl+w"
+delete_char = "Backspace"
+
+[keys.packages_table]
+next = "j"
+previous = "k"
+first = "g"
+last = "G"
+install = "i"
+remove = "r"
+batch_install = "I"
+batch_remove = "R"
+multi_select = "Space"
+filter_mode = "f"
+
+[keys.packages_table.filter]
+cycle_install = "i"
+toggle_aur = "a"
+toggle_pacman = "p"
+clear_all = "c"
+exit = "Esc"
+
+[keys.installed_table]
+next = "j"
+previous = "k"
+first = "g"
+last = "G"
+cycle_sort = "s"
+toggle_sort_direction = "S"
+remove = "r"
+batch_remove = "R"
+multi_select = "Space"
+
+[keys.package_info]
+scroll_down = "j"
+scroll_up = "k"
+page_down = "Ctrl+d"
+page_up = "Ctrl+u"
+open_url = "o"
+
+[keys.help]
+close = ["?", "Esc"]
+scroll_down = "j"
+scroll_up = "k"
+"#;
+
+fn write_default_config(path: &std::path::Path) {
+    if let Some(parent) = path.parent() {
+        if let Err(e) = std::fs::create_dir_all(parent) {
+            tracing::warn!(path = %parent.display(), error = %e, "failed to create config directory");
+            return;
+        }
+    }
+    match std::fs::write(path, DEFAULT_CONFIG) {
+        Ok(()) => tracing::info!(path = %path.display(), "created default config file"),
+        Err(e) => tracing::warn!(path = %path.display(), error = %e, "failed to write default config file"),
+    }
+}
+
 pub fn load() -> eyre::Result<Keymap> {
     let path = config_path();
     tracing::debug!(path = %path.display(), "looking for config file");
 
     if !path.exists() {
-        tracing::info!("no config file found, using default keybindings");
+        tracing::info!("no config file found, creating default");
+        write_default_config(&path);
         return Ok(Keymap::default());
     }
 
