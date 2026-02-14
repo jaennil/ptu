@@ -1,4 +1,5 @@
 use std::cell::RefCell;
+use std::time::Instant;
 
 use tokio::runtime::Runtime;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
@@ -23,6 +24,8 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
 
 const TAB_BAR_HEIGHT: u16 = 1;
+const STATUS_BAR_HEIGHT: u16 = 1;
+const STATUS_DISPLAY_SECS: u64 = 5;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum AppTab {
@@ -52,6 +55,9 @@ pub(crate) struct App {
     global_keys: GlobalKeys,
     tabs_keys: TabsKeys,
     help_keys: HelpKeys,
+    status_message: Option<String>,
+    status_time: Option<Instant>,
+    status_is_error: bool,
 }
 
 impl App {
@@ -109,6 +115,9 @@ impl App {
             global_keys: keymap.global,
             tabs_keys: keymap.tabs,
             help_keys: keymap.help,
+            status_message: None,
+            status_time: None,
+            status_is_error: false,
         })
     }
 
@@ -235,6 +244,15 @@ impl App {
                 needs_render = true;
             }
 
+            // Auto-clear expired status messages
+            if let Some(time) = self.status_time {
+                if time.elapsed() >= std::time::Duration::from_secs(STATUS_DISPLAY_SECS) {
+                    self.status_message = None;
+                    self.status_time = None;
+                    needs_render = true;
+                }
+            }
+
             // Check for file search results from async task
             if let Ok(file_packages) = self.file_receiver.try_recv() {
                 self.package_input.set_loading(false);
@@ -267,19 +285,34 @@ impl App {
         let show_help = self.show_help;
         let help_scroll = self.help_scroll;
         let active_tab = self.active_tab;
+        let status_message = self.status_message.clone();
+        let status_is_error = self.status_is_error;
 
         self.tui.draw(|frame| {
             let area = frame.area();
 
-            // Split: tab bar (1 line) + content
-            let main_layout = Layout::vertical([
-                Constraint::Length(TAB_BAR_HEIGHT),
-                Constraint::Percentage(100),
-            ])
-            .split(area);
+            let has_status = status_message.is_some();
+
+            // Split: tab bar (1 line) + content + optional status bar
+            let main_layout = if has_status {
+                Layout::vertical([
+                    Constraint::Length(TAB_BAR_HEIGHT),
+                    Constraint::Percentage(100),
+                    Constraint::Length(STATUS_BAR_HEIGHT),
+                ])
+                .split(area)
+            } else {
+                Layout::vertical([
+                    Constraint::Length(TAB_BAR_HEIGHT),
+                    Constraint::Percentage(100),
+                    Constraint::Length(0),
+                ])
+                .split(area)
+            };
 
             let tab_bar_area = main_layout[0];
             let content_area = main_layout[1];
+            let status_area = main_layout[2];
 
             // Draw tab bar
             Self::draw_tab_bar(frame, tab_bar_area, active_tab);
@@ -346,6 +379,16 @@ impl App {
                         return;
                     }
                 }
+            }
+
+            // Draw status bar
+            if let Some(ref msg) = status_message {
+                let color = if status_is_error { Color::Red } else { Color::Green };
+                let line = Line::from(Span::styled(
+                    format!(" {} ", msg),
+                    Style::default().fg(color).add_modifier(Modifier::BOLD),
+                ));
+                frame.render_widget(line, status_area);
             }
 
             // Draw help overlay on top of everything
@@ -811,7 +854,36 @@ impl App {
             self.installed_table.update(event)?;
         }
 
+        // Set status messages from events
+        for event in &events {
+            match event {
+                crate::event::Event::PackageInstalled(name) => {
+                    self.set_status(format!("Installed: {}", name), false);
+                }
+                crate::event::Event::PackageRemoved(name) => {
+                    self.set_status(format!("Removed: {}", name), false);
+                }
+                crate::event::Event::PackagesInstalled(names) => {
+                    self.set_status(format!("Installed {} packages", names.len()), false);
+                }
+                crate::event::Event::PackagesRemoved(names) => {
+                    self.set_status(format!("Removed {} packages", names.len()), false);
+                }
+                crate::event::Event::OperationFailed { package, error } => {
+                    self.set_status(format!("Failed: {} ({})", package, error), true);
+                }
+                _ => {}
+            }
+        }
+
         Ok(())
+    }
+
+    fn set_status(&mut self, message: String, is_error: bool) {
+        tracing::debug!(message, is_error, "status message set");
+        self.status_message = Some(message);
+        self.status_time = Some(Instant::now());
+        self.status_is_error = is_error;
     }
 
     fn handle_action(&mut self, action: &Action) -> eyre::Result<Vec<crate::event::Event>> {

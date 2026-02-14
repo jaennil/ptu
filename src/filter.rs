@@ -75,8 +75,4 @@ impl PackageFilter {
         self.install = InstallFilter::All;
         self.source = SourceFilter::All;
     }
-
-    pub fn is_active(&self) -> bool {
-        self.install != InstallFilter::All || self.source != SourceFilter::All
-    }
 }
