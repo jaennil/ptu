@@ -138,12 +138,15 @@ pub(crate) fn remove_packages(names: &[&str]) -> eyre::Result<ExitStatus> {
 
 fn find_aur_helper() -> eyre::Result<String> {
     for helper in ["yay", "paru"] {
-        if Command::new("which")
-            .arg(helper)
-            .output()
-            .map(|o| o.status.success())
+        if Command::new(helper)
+            .arg("--version")
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .map(|s| s.success())
             .unwrap_or(false)
         {
+            tracing::debug!(helper, "found AUR helper");
             return Ok(helper.to_string());
         }
     }
