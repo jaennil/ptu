@@ -48,8 +48,13 @@ pub(crate) async fn search(query: &str, installed_packages: &HashSet<String>) ->
 
     tracing::debug!(query, "searching AUR (async)");
 
-    let url = format!("{}?arg={}", AUR_RPC_URL, query);
-    let response: AurResponse = reqwest::get(&url).await?.json().await?;
+    let response: AurResponse = reqwest::Client::new()
+        .get(AUR_RPC_URL)
+        .query(&[("arg", query)])
+        .send()
+        .await?
+        .json()
+        .await?;
 
     tracing::debug!(count = response.results.len(), "AUR search results");
 
