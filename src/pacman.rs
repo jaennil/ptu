@@ -21,10 +21,13 @@ impl Pacman {
         tracing::debug!("initializing pacman handle");
         let handle = Alpm::new("/", "/var/lib/pacman")?;
 
-        tracing::debug!("registering sync databases");
-        handle.register_syncdb("core", SigLevel::USE_DEFAULT)?;
-        handle.register_syncdb("extra", SigLevel::USE_DEFAULT)?;
-        handle.register_syncdb("community", SigLevel::USE_DEFAULT)?;
+        let repos = read_repos_from_pacman_conf();
+        tracing::debug!(?repos, "registering sync databases from pacman.conf");
+        for repo in &repos {
+            if let Err(e) = handle.register_syncdb(repo.as_str(), SigLevel::USE_DEFAULT) {
+                tracing::warn!(repo, %e, "failed to register sync database");
+            }
+        }
 
         // Cache installed packages at startup
         let installed_cache: HashSet<String> = handle
@@ -363,4 +366,35 @@ pub(crate) fn format_timestamp(ts: i64) -> String {
     let y = if m <= 2 { y + 1 } else { y };
 
     format!("{:04}-{:02}-{:02}", y, m, d)
+}
+
+/// Read repository names from /etc/pacman.conf.
+/// Falls back to ["core", "extra"] if the file can't be read.
+fn read_repos_from_pacman_conf() -> Vec<String> {
+    let content = match std::fs::read_to_string("/etc/pacman.conf") {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::warn!(%e, "failed to read /etc/pacman.conf, using default repos");
+            return vec!["core".to_string(), "extra".to_string()];
+        }
+    };
+
+    let mut repos = Vec::new();
+    for line in content.lines() {
+        let line = line.trim();
+        if line.starts_with('[') && line.ends_with(']') {
+            let name = &line[1..line.len() - 1];
+            if name != "options" {
+                repos.push(name.to_string());
+            }
+        }
+    }
+
+    if repos.is_empty() {
+        tracing::warn!("no repositories found in pacman.conf, using default repos");
+        return vec!["core".to_string(), "extra".to_string()];
+    }
+
+    tracing::info!(count = repos.len(), ?repos, "read repositories from pacman.conf");
+    repos
 }
