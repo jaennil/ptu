@@ -87,6 +87,7 @@ struct InstalledTableKeysRaw {
     multi_select: Option<KeyBinding>,
     filter: Option<KeyBinding>,
     toggle_update_filter: Option<KeyBinding>,
+    refresh: Option<KeyBinding>,
 }
 
 #[derive(Deserialize, Default)]
@@ -193,6 +194,7 @@ pub struct InstalledTableKeys {
     pub multi_select: Vec<KeyEvent>,
     pub filter: Vec<KeyEvent>,
     pub toggle_update_filter: Vec<KeyEvent>,
+    pub refresh: Vec<KeyEvent>,
 }
 
 pub struct PackageInfoKeys {
@@ -314,6 +316,7 @@ impl Default for InstalledTableKeys {
             multi_select: vec![key_special(KeyCode::Char(' '))],
             filter: vec![key('/')],
             toggle_update_filter: vec![key('u')],
+            refresh: vec![key_mod('r', KeyModifiers::CONTROL)],
         }
     }
 }
@@ -570,6 +573,7 @@ fn resolve_installed_table(raw: Option<InstalledTableKeysRaw>) -> InstalledTable
         multi_select: resolve_binding(raw.multi_select, defaults.multi_select),
         filter: resolve_binding(raw.filter, defaults.filter),
         toggle_update_filter: resolve_binding(raw.toggle_update_filter, defaults.toggle_update_filter),
+        refresh: resolve_binding(raw.refresh, defaults.refresh),
     }
 }
 
@@ -686,6 +690,7 @@ batch_remove = "R"
 multi_select = "Space"
 filter = "/"
 toggle_update_filter = "u"
+refresh = "Ctrl+r"
 
 [keys.package_info]
 scroll_down = "j"

@@ -10,4 +10,5 @@ pub(crate) enum Action {
     RemovePackages { packages: Vec<(String, String)> },   // (name, source)
     SelectPackage(Box<Package>),
     OpenUrl(String),
+    RefreshInstalled,
 }

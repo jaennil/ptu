@@ -900,6 +900,10 @@ impl App {
                 Span::styled("   u             ", key_style),
                 Span::styled("Toggle update filter", desc_style),
             ]),
+            Line::from(vec![
+                Span::styled("   Ctrl+r        ", key_style),
+                Span::styled("Refresh packages and updates", desc_style),
+            ]),
             Line::from(""),
             Line::from(Span::styled(" Package Info", header_style)),
             Line::from(vec![
@@ -1210,6 +1214,47 @@ impl App {
                     }
                     events.push(crate::event::Event::PackagesRemoved(removed_names));
                 }
+            }
+            Action::RefreshInstalled => {
+                tracing::info!("refreshing installed packages");
+                self.pacman = Pacman::new()?;
+                let repo_updates = self.pacman.check_repo_updates();
+                let new_packages = self.pacman.get_installed_packages(&repo_updates);
+                let count = new_packages.len();
+                tracing::info!(count, "reloaded installed packages");
+
+                // Spawn async AUR update check
+                let aur_pkgs: Vec<(String, String)> = new_packages
+                    .iter()
+                    .filter(|p| p.source == "aur")
+                    .map(|p| (p.name.clone(), p.version.clone()))
+                    .collect();
+                if !aur_pkgs.is_empty() {
+                    tracing::info!(count = aur_pkgs.len(), "starting async AUR update check after refresh");
+                    let sender = self.aur_update_sender.clone();
+                    self.runtime.spawn(async move {
+                        match aur::check_updates(aur_pkgs).await {
+                            Ok(updates) => {
+                                tracing::debug!(count = updates.len(), "AUR update check completed after refresh");
+                                if let Err(e) = sender.send(updates) {
+                                    tracing::warn!(%e, "failed to send AUR update results after refresh");
+                                }
+                            }
+                            Err(e) => {
+                                tracing::warn!(%e, "AUR update check failed after refresh");
+                            }
+                        }
+                    });
+                }
+
+                self.installed_table.reload(new_packages.clone());
+
+                // Select first package if available
+                if let Some(first) = new_packages.first() {
+                    events.push(crate::event::Event::PackageSelected(Box::new(first.clone())));
+                }
+
+                self.set_status(format!("Refreshed {} packages", count), false);
             }
             Action::OpenUrl(url) => {
                 tracing::info!(url, "opening URL in browser");

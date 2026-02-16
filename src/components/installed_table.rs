@@ -85,6 +85,18 @@ impl InstalledTable {
         table
     }
 
+    pub(crate) fn reload(&mut self, packages: Vec<Package>) {
+        tracing::info!(count = packages.len(), "reloading installed table");
+        self.packages = packages;
+        self.selected_indices.clear();
+        self.resort();
+        if !self.sorted_indices.is_empty() {
+            self.state.select(Some(0));
+        } else {
+            self.state.select(None);
+        }
+    }
+
     fn resort(&mut self) {
         let filter_lower = self.filter_text.to_lowercase();
         let update_filter = self.update_filter;
@@ -493,6 +505,9 @@ impl Component for InstalledTable {
             }
         } else if config::key_matches(key_event, &self.keys.multi_select) {
             self.toggle_selection();
+        } else if config::key_matches(key_event, &self.keys.refresh) {
+            tracing::info!("refresh installed packages requested");
+            actions.push(Action::RefreshInstalled);
         } else if config::key_matches(key_event, &self.keys.toggle_update_filter) {
             self.update_filter = !self.update_filter;
             tracing::debug!(update_filter = self.update_filter, "toggled update filter");
