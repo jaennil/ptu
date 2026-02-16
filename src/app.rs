@@ -896,6 +896,10 @@ impl App {
                 Span::styled("   Esc           ", key_style),
                 Span::styled("Clear filter", desc_style),
             ]),
+            Line::from(vec![
+                Span::styled("   u             ", key_style),
+                Span::styled("Toggle update filter", desc_style),
+            ]),
             Line::from(""),
             Line::from(Span::styled(" Package Info", header_style)),
             Line::from(vec![

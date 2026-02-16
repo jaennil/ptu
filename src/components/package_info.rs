@@ -128,6 +128,9 @@ impl Component for PackageInfo {
 
         rows_with_heights.push(create_row("description", &self.package.description, value_width));
         rows_with_heights.push(create_row("version", &self.package.version, value_width));
+        if let Some(ref update_ver) = self.package.update_version {
+            rows_with_heights.push(create_row("update", update_ver, value_width));
+        }
         if !self.package.matched_files.is_empty() {
             rows_with_heights.push(create_row("matched files", &matched_files_str, value_width));
         }
