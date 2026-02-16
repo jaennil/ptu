@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use color_eyre::eyre;
-use ratatui::crossterm::event::{KeyEvent, MouseEvent, MouseEventKind};
+use ratatui::crossterm::event::{KeyCode, KeyEvent, MouseEvent, MouseEventKind};
 use ratatui::layout::{Constraint, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
@@ -53,6 +53,8 @@ pub(crate) struct InstalledTable {
     theme: Theme,
     selected_indices: HashSet<usize>,
     keys: InstalledTableKeys,
+    filter_mode: bool,
+    filter_text: String,
 }
 
 impl InstalledTable {
@@ -68,6 +70,8 @@ impl InstalledTable {
             theme: Theme::default(),
             selected_indices: HashSet::new(),
             keys,
+            filter_mode: false,
+            filter_text: String::new(),
         };
         table.resort();
         if !table.sorted_indices.is_empty() {
@@ -77,7 +81,14 @@ impl InstalledTable {
     }
 
     fn resort(&mut self) {
-        self.sorted_indices = (0..self.packages.len()).collect();
+        if self.filter_text.is_empty() {
+            self.sorted_indices = (0..self.packages.len()).collect();
+        } else {
+            let filter_lower = self.filter_text.to_lowercase();
+            self.sorted_indices = (0..self.packages.len())
+                .filter(|&i| self.packages[i].name.to_lowercase().contains(&filter_lower))
+                .collect();
+        }
 
         let packages = &self.packages;
         let sort_column = self.sort_column;
@@ -100,7 +111,9 @@ impl InstalledTable {
         tracing::debug!(
             column = ?self.sort_column,
             ascending = self.ascending,
-            count = self.sorted_indices.len(),
+            total = self.packages.len(),
+            filtered = self.sorted_indices.len(),
+            filter = %self.filter_text,
             "resorted installed table"
         );
     }
@@ -108,6 +121,10 @@ impl InstalledTable {
     fn selected_package_index(&self) -> Option<usize> {
         let display_idx = self.state.selected()?;
         self.sorted_indices.get(display_idx).copied()
+    }
+
+    pub(crate) fn is_filter_mode(&self) -> bool {
+        self.filter_mode
     }
 
     pub(crate) fn get_selected_package(&self) -> Option<&Package> {
@@ -185,6 +202,15 @@ impl InstalledTable {
             ),
         ];
 
+        // Show filter indicator
+        if self.filter_mode || !self.filter_text.is_empty() {
+            let filter_color = if self.filter_mode { Color::Green } else { Color::Cyan };
+            spans.push(Span::styled(
+                format!(" [/: {}]", self.filter_text),
+                Style::default().fg(filter_color),
+            ));
+        }
+
         if !self.selected_indices.is_empty() {
             spans.push(Span::styled(
                 format!(" [{}sel]", self.selected_indices.len()),
@@ -192,8 +218,14 @@ impl InstalledTable {
             ));
         }
 
+        // Show filtered/total count when filter is active
+        let count_label = if !self.filter_text.is_empty() {
+            format!(" {}/{} packages", self.sorted_indices.len(), self.packages.len())
+        } else {
+            format!(" {} packages", self.packages.len())
+        };
         spans.push(Span::styled(
-            format!(" {} packages", self.packages.len()),
+            count_label,
             Style::default().fg(Color::DarkGray),
         ));
 
@@ -279,7 +311,70 @@ impl Component for InstalledTable {
 
         let mut actions = Vec::new();
 
-        if config::key_matches(key_event, &self.keys.cycle_sort) {
+        // Filter mode: capture text input
+        if self.filter_mode {
+            match key_event.code {
+                KeyCode::Char(c) => {
+                    self.filter_text.push(c);
+                    tracing::debug!(filter = %self.filter_text, "filter text updated");
+                    self.resort();
+                    if !self.sorted_indices.is_empty() {
+                        self.state.select(Some(0));
+                        if let Some(package) = self.get_selected_package() {
+                            actions.push(Action::SelectPackage(Box::new(package.clone())));
+                        }
+                    } else {
+                        self.state.select(None);
+                    }
+                }
+                KeyCode::Backspace => {
+                    self.filter_text.pop();
+                    tracing::debug!(filter = %self.filter_text, "filter text backspace");
+                    self.resort();
+                    if !self.sorted_indices.is_empty() {
+                        self.state.select(Some(0));
+                        if let Some(package) = self.get_selected_package() {
+                            actions.push(Action::SelectPackage(Box::new(package.clone())));
+                        }
+                    } else {
+                        self.state.select(None);
+                    }
+                }
+                KeyCode::Esc => {
+                    tracing::debug!("exiting filter mode, clearing filter");
+                    self.filter_mode = false;
+                    self.filter_text.clear();
+                    self.resort();
+                    if !self.sorted_indices.is_empty() {
+                        self.state.select(Some(0));
+                        if let Some(package) = self.get_selected_package() {
+                            actions.push(Action::SelectPackage(Box::new(package.clone())));
+                        }
+                    } else {
+                        self.state.select(None);
+                    }
+                }
+                KeyCode::Enter => {
+                    tracing::debug!(filter = %self.filter_text, "applying filter, exiting filter mode");
+                    self.filter_mode = false;
+                }
+                _ => {
+                    tracing::trace!(key = ?key_event.code, "key swallowed by filter mode");
+                }
+            }
+            return Ok(Some(actions));
+        }
+
+        // Normal mode
+        if config::key_matches(key_event, &self.keys.filter) {
+            tracing::debug!("entering filter mode");
+            self.filter_mode = true;
+            self.filter_text.clear();
+            self.resort();
+            if !self.sorted_indices.is_empty() {
+                self.state.select(Some(0));
+            }
+        } else if config::key_matches(key_event, &self.keys.cycle_sort) {
             self.sort_column = self.sort_column.next();
             tracing::debug!(column = ?self.sort_column, "cycling sort column");
             let selected_pkg_idx = self.selected_package_index();

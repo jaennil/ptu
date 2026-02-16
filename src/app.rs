@@ -462,8 +462,13 @@ impl App {
             return Ok(Vec::new());
         }
 
+        // Skip global keys when installed table filter mode is active
+        let in_filter_mode = self.active_tab == AppTab::Installed
+            && self.focused == 0
+            && self.installed_table.is_filter_mode();
+
         // Open help
-        if config::key_matches(key_event, &self.global_keys.toggle_help) {
+        if !in_filter_mode && config::key_matches(key_event, &self.global_keys.toggle_help) {
             tracing::debug!("opening help window");
             self.show_help = true;
             self.help_scroll = 0;
@@ -471,11 +476,19 @@ impl App {
         }
 
         // Quit
-        if config::key_matches(key_event, &self.global_keys.quit) {
+        if !in_filter_mode && config::key_matches(key_event, &self.global_keys.quit) {
             self.should_exit = true;
         }
 
         tracing::trace!(code = ?key_event.code, modifiers = ?key_event.modifiers, "key event received");
+
+        // When filter mode is active, route all keys directly to installed table
+        if in_filter_mode {
+            if let Some(component_actions) = self.installed_table.handle_key_event(key_event)? {
+                return Ok(component_actions);
+            }
+            return Ok(Vec::new());
+        }
 
         // Handle tab switching
         if config::key_matches(key_event, &self.tabs_keys.search) {
@@ -806,6 +819,18 @@ impl App {
             Line::from(vec![
                 Span::styled("   Space         ", key_style),
                 Span::styled("Toggle multi-select", desc_style),
+            ]),
+            Line::from(vec![
+                Span::styled("   /             ", key_style),
+                Span::styled("Filter by name", desc_style),
+            ]),
+            Line::from(vec![
+                Span::styled("   Enter         ", key_style),
+                Span::styled("Apply filter", desc_style),
+            ]),
+            Line::from(vec![
+                Span::styled("   Esc           ", key_style),
+                Span::styled("Clear filter", desc_style),
             ]),
             Line::from(""),
             Line::from(Span::styled(" Package Info", header_style)),
