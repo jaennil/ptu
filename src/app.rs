@@ -61,6 +61,8 @@ pub(crate) struct App {
     status_message: Option<String>,
     status_time: Option<Instant>,
     status_is_error: bool,
+    pending_action: Option<Action>,
+    confirmation_text: String,
 }
 
 impl App {
@@ -150,6 +152,8 @@ impl App {
             status_message: None,
             status_time: None,
             status_is_error: false,
+            pending_action: None,
+            confirmation_text: String::new(),
         })
     }
 
@@ -332,6 +336,8 @@ impl App {
         let package_info_area: RefCell<Rect> = RefCell::new(Rect::default());
         let show_help = self.show_help;
         let help_scroll = self.help_scroll;
+        let show_confirmation = self.pending_action.is_some();
+        let confirmation_text = self.confirmation_text.clone();
         let active_tab = self.active_tab;
         let status_message = self.status_message.clone();
         let status_is_error = self.status_is_error;
@@ -443,6 +449,11 @@ impl App {
             if show_help {
                 Self::draw_help(frame, area, help_scroll);
             }
+
+            // Draw confirmation dialog on top of everything
+            if show_confirmation {
+                Self::draw_confirmation(frame, area, &confirmation_text);
+            }
         })?;
 
         self.packages_table_area = packages_table_area.into_inner();
@@ -501,6 +512,56 @@ impl App {
                 tracing::trace!(scroll = self.help_scroll, "help scroll up");
             } else {
                 tracing::trace!(key = ?key_event.code, "key swallowed by help window");
+            }
+            return Ok(Vec::new());
+        }
+
+        // When confirmation dialog is visible, intercept all keys
+        if self.pending_action.is_some() {
+            match key_event.code {
+                crossterm::event::KeyCode::Char('y') => {
+                    let action = self.pending_action.take().unwrap();
+                    self.confirmation_text.clear();
+                    tracing::info!("confirmation accepted, executing action");
+                    let events = self.handle_action_confirmed(&action)?;
+                    for component in self.components.iter_mut() {
+                        for event in &events {
+                            component.update(event)?;
+                        }
+                    }
+                    for event in &events {
+                        self.installed_table.update(event)?;
+                    }
+                    for event in &events {
+                        match event {
+                            crate::event::Event::PackageInstalled(name) => {
+                                self.set_status(format!("Installed: {}", name), false);
+                            }
+                            crate::event::Event::PackageRemoved(name) => {
+                                self.set_status(format!("Removed: {}", name), false);
+                            }
+                            crate::event::Event::PackagesInstalled(names) => {
+                                self.set_status(format!("Installed {} packages", names.len()), false);
+                            }
+                            crate::event::Event::PackagesRemoved(names) => {
+                                self.set_status(format!("Removed {} packages", names.len()), false);
+                            }
+                            crate::event::Event::OperationFailed { package, error } => {
+                                self.set_status(format!("Failed: {} ({})", package, error), true);
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                crossterm::event::KeyCode::Char('n') | crossterm::event::KeyCode::Esc => {
+                    tracing::info!("confirmation cancelled");
+                    self.pending_action = None;
+                    self.confirmation_text.clear();
+                    self.set_status("Cancelled".to_string(), false);
+                }
+                _ => {
+                    tracing::trace!(key = ?key_event.code, "key swallowed by confirmation dialog");
+                }
             }
             return Ok(Vec::new());
         }
@@ -754,6 +815,10 @@ impl App {
                 Span::styled("   Alt+j/k/h/l   ", key_style),
                 Span::styled("Navigate focus", desc_style),
             ]),
+            Line::from(vec![
+                Span::styled("   y / n         ", key_style),
+                Span::styled("Confirm / cancel action", desc_style),
+            ]),
             Line::from(""),
             Line::from(Span::styled(" Tabs", header_style)),
             Line::from(vec![
@@ -989,6 +1054,42 @@ impl App {
     }
 
     fn handle_action(&mut self, action: &Action) -> eyre::Result<Vec<crate::event::Event>> {
+        // Intercept destructive actions: show confirmation dialog instead of executing
+        match action {
+            Action::InstallPackage { name, .. } => {
+                self.confirmation_text = format!("Install {}?", name);
+                self.pending_action = Some(action.clone());
+                tracing::debug!(text = %self.confirmation_text, "showing confirmation dialog");
+                return Ok(Vec::new());
+            }
+            Action::UpdateInstallPackage { name, .. } => {
+                self.confirmation_text = format!("Update {}?", name);
+                self.pending_action = Some(action.clone());
+                tracing::debug!(text = %self.confirmation_text, "showing confirmation dialog");
+                return Ok(Vec::new());
+            }
+            Action::RemovePackage { name, .. } => {
+                self.confirmation_text = format!("Remove {}?", name);
+                self.pending_action = Some(action.clone());
+                tracing::debug!(text = %self.confirmation_text, "showing confirmation dialog");
+                return Ok(Vec::new());
+            }
+            Action::InstallPackages { packages } => {
+                self.confirmation_text = format!("Install {} packages?", packages.len());
+                self.pending_action = Some(action.clone());
+                tracing::debug!(text = %self.confirmation_text, "showing confirmation dialog");
+                return Ok(Vec::new());
+            }
+            Action::RemovePackages { packages } => {
+                self.confirmation_text = format!("Remove {} packages?", packages.len());
+                self.pending_action = Some(action.clone());
+                tracing::debug!(text = %self.confirmation_text, "showing confirmation dialog");
+                return Ok(Vec::new());
+            }
+            _ => {}
+        }
+
+        // Non-destructive actions execute immediately
         let mut events = Vec::new();
 
         match action {
@@ -1034,6 +1135,79 @@ impl App {
                     }
                 });
             }
+            Action::SelectPackage(package) => {
+                tracing::debug!(package_name = package.name, "package selected");
+                events.push(crate::event::Event::PackageSelected(package.clone()));
+            }
+            Action::RefreshInstalled => {
+                tracing::info!("refreshing installed packages");
+                self.pacman = Pacman::new()?;
+                let repo_updates = self.pacman.check_repo_updates();
+                let new_packages = self.pacman.get_installed_packages(&repo_updates);
+                let count = new_packages.len();
+                tracing::info!(count, "reloaded installed packages");
+
+                // Spawn async AUR update check
+                let aur_pkgs: Vec<(String, String)> = new_packages
+                    .iter()
+                    .filter(|p| p.source == "aur")
+                    .map(|p| (p.name.clone(), p.version.clone()))
+                    .collect();
+                if !aur_pkgs.is_empty() {
+                    tracing::info!(count = aur_pkgs.len(), "starting async AUR update check after refresh");
+                    let sender = self.aur_update_sender.clone();
+                    self.runtime.spawn(async move {
+                        match aur::check_updates(aur_pkgs).await {
+                            Ok(updates) => {
+                                tracing::debug!(count = updates.len(), "AUR update check completed after refresh");
+                                if let Err(e) = sender.send(updates) {
+                                    tracing::warn!(%e, "failed to send AUR update results after refresh");
+                                }
+                            }
+                            Err(e) => {
+                                tracing::warn!(%e, "AUR update check failed after refresh");
+                            }
+                        }
+                    });
+                }
+
+                self.installed_table.reload(new_packages.clone());
+
+                // Select first package if available
+                if let Some(first) = new_packages.first() {
+                    events.push(crate::event::Event::PackageSelected(Box::new(first.clone())));
+                }
+
+                self.set_status(format!("Refreshed {} packages", count), false);
+            }
+            Action::OpenUrl(url) => {
+                tracing::info!(url, "opening URL in browser");
+                match std::process::Command::new("xdg-open")
+                    .arg(url)
+                    .stdin(std::process::Stdio::null())
+                    .stdout(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::null())
+                    .spawn()
+                {
+                    Ok(_) => tracing::debug!(url, "xdg-open spawned successfully"),
+                    Err(e) => tracing::warn!(url, %e, "failed to open URL with xdg-open"),
+                }
+            }
+            // Destructive actions are intercepted above, unreachable here
+            Action::InstallPackage { .. }
+            | Action::UpdateInstallPackage { .. }
+            | Action::RemovePackage { .. }
+            | Action::InstallPackages { .. }
+            | Action::RemovePackages { .. } => unreachable!(),
+        };
+
+        Ok(events)
+    }
+
+    fn handle_action_confirmed(&mut self, action: &Action) -> eyre::Result<Vec<crate::event::Event>> {
+        let mut events = Vec::new();
+
+        match action {
             Action::InstallPackage { name, source } => {
                 tracing::info!(name, source, "installing package");
                 let mut success = false;
@@ -1108,10 +1282,6 @@ impl App {
                         error,
                     });
                 }
-            }
-            Action::SelectPackage(package) => {
-                tracing::debug!(package_name = package.name, "package selected");
-                events.push(crate::event::Event::PackageSelected(package.clone()));
             }
             Action::InstallPackages { packages } => {
                 tracing::info!(count = packages.len(), "batch installing packages");
@@ -1215,62 +1385,47 @@ impl App {
                     events.push(crate::event::Event::PackagesRemoved(removed_names));
                 }
             }
-            Action::RefreshInstalled => {
-                tracing::info!("refreshing installed packages");
-                self.pacman = Pacman::new()?;
-                let repo_updates = self.pacman.check_repo_updates();
-                let new_packages = self.pacman.get_installed_packages(&repo_updates);
-                let count = new_packages.len();
-                tracing::info!(count, "reloaded installed packages");
-
-                // Spawn async AUR update check
-                let aur_pkgs: Vec<(String, String)> = new_packages
-                    .iter()
-                    .filter(|p| p.source == "aur")
-                    .map(|p| (p.name.clone(), p.version.clone()))
-                    .collect();
-                if !aur_pkgs.is_empty() {
-                    tracing::info!(count = aur_pkgs.len(), "starting async AUR update check after refresh");
-                    let sender = self.aur_update_sender.clone();
-                    self.runtime.spawn(async move {
-                        match aur::check_updates(aur_pkgs).await {
-                            Ok(updates) => {
-                                tracing::debug!(count = updates.len(), "AUR update check completed after refresh");
-                                if let Err(e) = sender.send(updates) {
-                                    tracing::warn!(%e, "failed to send AUR update results after refresh");
-                                }
-                            }
-                            Err(e) => {
-                                tracing::warn!(%e, "AUR update check failed after refresh");
-                            }
-                        }
-                    });
-                }
-
-                self.installed_table.reload(new_packages.clone());
-
-                // Select first package if available
-                if let Some(first) = new_packages.first() {
-                    events.push(crate::event::Event::PackageSelected(Box::new(first.clone())));
-                }
-
-                self.set_status(format!("Refreshed {} packages", count), false);
-            }
-            Action::OpenUrl(url) => {
-                tracing::info!(url, "opening URL in browser");
-                match std::process::Command::new("xdg-open")
-                    .arg(url)
-                    .stdin(std::process::Stdio::null())
-                    .stdout(std::process::Stdio::null())
-                    .stderr(std::process::Stdio::null())
-                    .spawn()
-                {
-                    Ok(_) => tracing::debug!(url, "xdg-open spawned successfully"),
-                    Err(e) => tracing::warn!(url, %e, "failed to open URL with xdg-open"),
-                }
+            _ => {
+                tracing::warn!("handle_action_confirmed called with non-destructive action");
             }
         };
 
         Ok(events)
+    }
+
+    fn draw_confirmation(frame: &mut ratatui::Frame, area: Rect, text: &str) {
+        let popup_width = (area.width as u32 * 40 / 100).max(30) as u16;
+        let popup_height = 5u16;
+        let popup_x = area.x + (area.width.saturating_sub(popup_width)) / 2;
+        let popup_y = area.y + (area.height.saturating_sub(popup_height)) / 2;
+        let popup_area = Rect::new(popup_x, popup_y, popup_width, popup_height);
+
+        frame.render_widget(Clear, popup_area);
+
+        let block = Block::default()
+            .title(" Confirm ")
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(Color::Yellow))
+            .style(Style::default().bg(Color::Black));
+
+        let lines = vec![
+            Line::from(Span::styled(
+                text,
+                Style::default().fg(Color::White),
+            )),
+            Line::from(""),
+            Line::from(vec![
+                Span::styled("[y]", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+                Span::styled(" Yes  ", Style::default().fg(Color::White)),
+                Span::styled("[n/Esc]", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+                Span::styled(" Cancel", Style::default().fg(Color::White)),
+            ]),
+        ];
+
+        let paragraph = Paragraph::new(lines)
+            .block(block)
+            .wrap(Wrap { trim: false });
+
+        frame.render_widget(paragraph, popup_area);
     }
 }

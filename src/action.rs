@@ -1,5 +1,6 @@
 use crate::pacman::Package;
 
+#[derive(Clone)]
 pub(crate) enum Action {
     SearchPackage(String),
     SearchFile(String),
