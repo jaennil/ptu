@@ -12,7 +12,8 @@ A Terminal User Interface (TUI) for Arch Linux's Pacman package manager, built w
 - Package installation, update and removal
 - **Multi-select packages** for batch install/remove
 - **Package filtering** by install status and source
-- **Installed packages tab** with sort by name/size/date/deps and name filter (`/`)
+- **Installed packages tab** with sort by name/size/date/deps/update and name filter (`/`)
+- **Update checker** — shows available updates for repo and AUR packages
 - Detailed package information display (scrollable)
 - **Help window** with keybindings reference (`?`)
 - **Open package URL** in browser (`o`)
@@ -100,7 +101,7 @@ Logs are written to `/tmp/ptu.log`.
 |--------------------|-------------------------------------|
 | `j` / `k`          | Navigate down / up                  |
 | `g` / `G`          | Jump to top / bottom of the list    |
-| `s`                | Cycle sort column (Name/Size/Date/Deps) |
+| `s`                | Cycle sort column (Name/Size/Date/Deps/Update) |
 | `S`                | Toggle sort direction               |
 | `Space`            | Toggle package selection (multi-select) |
 | `r`                | Remove selected package             |
@@ -108,6 +109,7 @@ Logs are written to `/tmp/ptu.log`.
 | `/`                | Filter by name                      |
 | `Enter`            | Apply filter                        |
 | `Esc`              | Clear filter                        |
+| `u`                | Toggle update filter                |
 
 #### Package Info
 
