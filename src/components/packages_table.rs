@@ -30,6 +30,7 @@ pub(crate) struct PackagesTable {
     filter: PackageFilter,
     filter_mode: bool,
     keys: PackagesTableKeys,
+    aur_loading: bool,
 }
 
 impl PackagesTable {
@@ -43,6 +44,7 @@ impl PackagesTable {
             filter: PackageFilter::default(),
             filter_mode: false,
             keys,
+            aur_loading: false,
         }
     }
 
@@ -203,6 +205,14 @@ impl PackagesTable {
             format!("[s:{}]", self.filter.source.label()),
             Style::default().fg(source_color),
         ));
+
+        // AUR loading indicator
+        if self.aur_loading {
+            spans.push(Span::styled(
+                " AUR...",
+                Style::default().fg(Color::Yellow),
+            ));
+        }
 
         // Package statistics
         if !self.all_packages.is_empty() {
@@ -376,7 +386,12 @@ impl Component for PackagesTable {
                 self.reset_selection();
                 self.clear_selection(); // Clear selection on new search (indices invalidate)
             }
+            Event::AurSearchStarted => {
+                self.aur_loading = true;
+                tracing::debug!("AUR search started, showing loading indicator");
+            }
             Event::AurPackagesFound(aur_packages) => {
+                self.aur_loading = false;
                 // Append AUR packages without resetting selection
                 tracing::debug!(count = aur_packages.len(), "merging AUR packages into list");
                 self.all_packages.extend(aur_packages.clone());

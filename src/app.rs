@@ -232,6 +232,11 @@ impl App {
             // Check if AUR debounce timer elapsed
             if let Some(query) = self.package_input.should_search_aur() {
                 self.start_aur_search(&query);
+                let event = crate::event::Event::AurSearchStarted;
+                for component in self.components.iter_mut() {
+                    component.update(&event)?;
+                }
+                needs_render = true;
             }
 
             // Check for AUR results from async task
