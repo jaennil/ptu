@@ -90,6 +90,7 @@ pub(crate) async fn search(query: &str, installed_packages: &HashSet<String>) ->
             out_of_date: pkg.out_of_date,
             first_submitted: Some(pkg.first_submitted),
             last_modified: Some(pkg.last_modified),
+            update_version: None,
         })
         .collect();
 

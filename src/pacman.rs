@@ -1,4 +1,5 @@
-use std::collections::HashSet;
+use std::cmp::Ordering;
+use std::collections::{HashMap, HashSet};
 use std::process::{Command, ExitStatus};
 
 use alpm::{Alpm, SigLevel};
@@ -102,6 +103,7 @@ impl Pacman {
                 out_of_date: None,
                 first_submitted: None,
                 last_modified: None,
+                update_version: None,
             });
         }
 
@@ -150,6 +152,7 @@ impl Pacman {
                     out_of_date: None,
                     first_submitted: None,
                     last_modified: None,
+                    update_version: None,
                 });
                 if packages.len() >= MAX_RESULTS {
                     tracing::debug!("pacman search hit limit of {} results", MAX_RESULTS);
@@ -331,6 +334,7 @@ pub(crate) struct Package {
     pub(crate) out_of_date: Option<i64>,
     pub(crate) first_submitted: Option<i64>,
     pub(crate) last_modified: Option<i64>,
+    pub(crate) update_version: Option<String>,
 }
 
 /// Format bytes into human-readable string (KiB, MiB, GiB)
