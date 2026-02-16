@@ -178,16 +178,24 @@ impl InstalledTable {
         let arrow = if self.ascending { "↑" } else { "↓" };
         let sort_label = format!("[s:{} {}]", self.sort_column.label(), arrow);
 
-        let spans = vec![
+        let mut spans = vec![
             Span::styled(
                 sort_label,
                 Style::default().fg(Color::Yellow),
             ),
-            Span::styled(
-                format!(" {} packages", self.packages.len()),
-                Style::default().fg(Color::DarkGray),
-            ),
         ];
+
+        if !self.selected_indices.is_empty() {
+            spans.push(Span::styled(
+                format!(" [{}sel]", self.selected_indices.len()),
+                Style::default().fg(Color::Rgb(255, 165, 0)),
+            ));
+        }
+
+        spans.push(Span::styled(
+            format!(" {} packages", self.packages.len()),
+            Style::default().fg(Color::DarkGray),
+        ));
 
         let line = Line::from(spans);
         frame.render_widget(line, area);

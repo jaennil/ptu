@@ -206,6 +206,14 @@ impl PackagesTable {
             Style::default().fg(source_color),
         ));
 
+        // Multi-select count
+        if !self.selected_indices.is_empty() {
+            spans.push(Span::styled(
+                format!(" [{}sel]", self.selected_indices.len()),
+                Style::default().fg(COLOR_SELECTED),
+            ));
+        }
+
         // AUR loading indicator
         if self.aur_loading {
             spans.push(Span::styled(
