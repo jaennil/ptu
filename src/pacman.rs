@@ -61,7 +61,34 @@ impl Pacman {
         self.installed_cache.remove(name);
     }
 
-    pub(crate) fn get_installed_packages(&self) -> Vec<Package> {
+    pub(crate) fn check_repo_updates(&self) -> HashMap<String, String> {
+        tracing::debug!("checking repo updates via alpm version comparison");
+        let mut updates = HashMap::new();
+
+        for pkg in self.handle.localdb().pkgs() {
+            let local_ver = pkg.version().to_string();
+            for db in self.handle.syncdbs() {
+                if let Ok(sync_pkg) = db.pkg(pkg.name()) {
+                    let sync_ver = sync_pkg.version().to_string();
+                    if alpm::vercmp(local_ver.clone(), sync_ver.clone()) == Ordering::Less {
+                        tracing::debug!(
+                            name = pkg.name(),
+                            local = %local_ver,
+                            sync = %sync_ver,
+                            "repo update available"
+                        );
+                        updates.insert(pkg.name().to_string(), sync_ver);
+                    }
+                    break;
+                }
+            }
+        }
+
+        tracing::info!(count = updates.len(), "repo updates found");
+        updates
+    }
+
+    pub(crate) fn get_installed_packages(&self, repo_updates: &HashMap<String, String>) -> Vec<Package> {
         tracing::debug!("loading all installed packages from localdb");
         let mut packages = Vec::new();
 
@@ -74,6 +101,8 @@ impl Pacman {
                 .find(|db| db.pkg(pkg.name()).is_ok())
                 .map(|db| db.name().to_string())
                 .unwrap_or_else(|| "aur".to_string());
+
+            let update_version = repo_updates.get(pkg.name()).cloned();
 
             packages.push(Package {
                 name: pkg.name().to_owned(),
@@ -103,7 +132,7 @@ impl Pacman {
                 out_of_date: None,
                 first_submitted: None,
                 last_modified: None,
-                update_version: None,
+                update_version,
             });
         }
 

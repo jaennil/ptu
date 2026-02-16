@@ -85,8 +85,9 @@ impl App {
         let mut package_info = PackageInfo::new(keymap.package_info);
         package_info.set_active(false);
 
-        // Load installed packages for Installed tab
-        let installed_packages = pacman.get_installed_packages();
+        // Check for repo updates and load installed packages
+        let repo_updates = pacman.check_repo_updates();
+        let installed_packages = pacman.get_installed_packages(&repo_updates);
         tracing::info!(count = installed_packages.len(), "loaded installed packages for Installed tab");
         let installed_table = InstalledTable::new(installed_packages, keymap.installed_table);
 
