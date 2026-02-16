@@ -58,6 +58,7 @@ pub(crate) struct InstalledTable {
     keys: InstalledTableKeys,
     filter_mode: bool,
     filter_text: String,
+    update_filter: bool,
 }
 
 impl InstalledTable {
@@ -75,6 +76,7 @@ impl InstalledTable {
             keys,
             filter_mode: false,
             filter_text: String::new(),
+            update_filter: false,
         };
         table.resort();
         if !table.sorted_indices.is_empty() {
@@ -84,14 +86,22 @@ impl InstalledTable {
     }
 
     fn resort(&mut self) {
-        if self.filter_text.is_empty() {
-            self.sorted_indices = (0..self.packages.len()).collect();
-        } else {
-            let filter_lower = self.filter_text.to_lowercase();
-            self.sorted_indices = (0..self.packages.len())
-                .filter(|&i| self.packages[i].name.to_lowercase().contains(&filter_lower))
-                .collect();
-        }
+        let filter_lower = self.filter_text.to_lowercase();
+        let update_filter = self.update_filter;
+
+        self.sorted_indices = (0..self.packages.len())
+            .filter(|&i| {
+                if !self.filter_text.is_empty()
+                    && !self.packages[i].name.to_lowercase().contains(&filter_lower)
+                {
+                    return false;
+                }
+                if update_filter && self.packages[i].update_version.is_none() {
+                    return false;
+                }
+                true
+            })
+            .collect();
 
         let packages = &self.packages;
         let sort_column = self.sort_column;
@@ -220,6 +230,14 @@ impl InstalledTable {
             ),
         ];
 
+        // Show update filter indicator
+        if self.update_filter {
+            spans.push(Span::styled(
+                " [u:Updates]".to_string(),
+                Style::default().fg(Color::Yellow),
+            ));
+        }
+
         // Show filter indicator
         if self.filter_mode || !self.filter_text.is_empty() {
             let filter_color = if self.filter_mode { Color::Green } else { Color::Cyan };
@@ -236,8 +254,17 @@ impl InstalledTable {
             ));
         }
 
+        // Show update count
+        let update_count = self.packages.iter().filter(|p| p.update_version.is_some()).count();
+        if update_count > 0 {
+            spans.push(Span::styled(
+                format!(" {}upd", update_count),
+                Style::default().fg(Color::Yellow),
+            ));
+        }
+
         // Show filtered/total count when filter is active
-        let count_label = if !self.filter_text.is_empty() {
+        let count_label = if !self.filter_text.is_empty() || self.update_filter {
             format!(" {}/{} packages", self.sorted_indices.len(), self.packages.len())
         } else {
             format!(" {} packages", self.packages.len())
@@ -466,6 +493,28 @@ impl Component for InstalledTable {
             }
         } else if config::key_matches(key_event, &self.keys.multi_select) {
             self.toggle_selection();
+        } else if config::key_matches(key_event, &self.keys.toggle_update_filter) {
+            self.update_filter = !self.update_filter;
+            tracing::debug!(update_filter = self.update_filter, "toggled update filter");
+            let selected_pkg_idx = self.selected_package_index();
+            self.resort();
+            if let Some(pkg_idx) = selected_pkg_idx {
+                if let Some(new_pos) = self.sorted_indices.iter().position(|&i| i == pkg_idx) {
+                    self.state.select(Some(new_pos));
+                } else if !self.sorted_indices.is_empty() {
+                    self.state.select(Some(0));
+                    if let Some(package) = self.get_selected_package() {
+                        actions.push(Action::SelectPackage(Box::new(package.clone())));
+                    }
+                } else {
+                    self.state.select(None);
+                }
+            } else if !self.sorted_indices.is_empty() {
+                self.state.select(Some(0));
+                if let Some(package) = self.get_selected_package() {
+                    actions.push(Action::SelectPackage(Box::new(package.clone())));
+                }
+            }
         }
 
         Ok(Some(actions))
