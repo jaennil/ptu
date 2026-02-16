@@ -12,6 +12,7 @@ A Terminal User Interface (TUI) for Arch Linux's Pacman package manager, built w
 - Package installation, update and removal
 - **Multi-select packages** for batch install/remove
 - **Package filtering** by install status and source
+- **Installed packages tab** with sort by name/size/date/deps and name filter (`/`)
 - Detailed package information display (scrollable)
 - **Help window** with keybindings reference (`?`)
 - **Open package URL** in browser (`o`)
@@ -80,7 +81,7 @@ Logs are written to `/tmp/ptu.log`.
 | `R`                | Batch remove selected packages      |
 | `f`                | Enter filter mode                   |
 
-#### Filter Mode
+#### Filter Mode (Search Tab)
 
 | Key                | Action                              |
 |--------------------|-------------------------------------|
@@ -89,6 +90,21 @@ Logs are written to `/tmp/ptu.log`.
 | `p`                | Toggle Pacman only                  |
 | `c`                | Clear all filters                   |
 | `Esc`              | Exit filter mode                    |
+
+#### Installed Table
+
+| Key                | Action                              |
+|--------------------|-------------------------------------|
+| `j` / `k`          | Navigate down / up                  |
+| `g` / `G`          | Jump to top / bottom of the list    |
+| `s`                | Cycle sort column (Name/Size/Date/Deps) |
+| `S`                | Toggle sort direction               |
+| `Space`            | Toggle package selection (multi-select) |
+| `r`                | Remove selected package             |
+| `R`                | Batch remove selected packages      |
+| `/`                | Filter by name                      |
+| `Enter`            | Apply filter                        |
+| `Esc`              | Clear filter                        |
 
 #### Package Info
 
@@ -125,6 +141,7 @@ src/
 ├── app.rs              # Main application logic + focus management + tokio runtime
 ├── aur.rs              # AUR API interface (async)
 ├── components/
+│   ├── installed_table.rs # Installed packages with sort/filter
 │   ├── package_info.rs # Scrollable package details
 │   ├── package_input.rs
 │   └── packages_table.rs
