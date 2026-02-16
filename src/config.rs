@@ -61,6 +61,7 @@ struct PackagesTableKeysRaw {
     batch_remove: Option<KeyBinding>,
     multi_select: Option<KeyBinding>,
     filter_mode: Option<KeyBinding>,
+    name_filter: Option<KeyBinding>,
     filter: Option<FilterKeysRaw>,
 }
 
@@ -167,6 +168,7 @@ pub struct PackagesTableKeys {
     pub batch_remove: Vec<KeyEvent>,
     pub multi_select: Vec<KeyEvent>,
     pub filter_mode: Vec<KeyEvent>,
+    pub name_filter: Vec<KeyEvent>,
     pub filter: FilterKeys,
 }
 
@@ -278,6 +280,7 @@ impl Default for PackagesTableKeys {
             batch_remove: vec![key_shift('R')],
             multi_select: vec![key_special(KeyCode::Char(' '))],
             filter_mode: vec![key('f')],
+            name_filter: vec![key('/')],
             filter: FilterKeys::default(),
         }
     }
@@ -544,6 +547,7 @@ fn resolve_packages_table(raw: Option<PackagesTableKeysRaw>) -> PackagesTableKey
         batch_remove: resolve_binding(raw.batch_remove, defaults.batch_remove),
         multi_select: resolve_binding(raw.multi_select, defaults.multi_select),
         filter_mode: resolve_binding(raw.filter_mode, defaults.filter_mode),
+        name_filter: resolve_binding(raw.name_filter, defaults.name_filter),
         filter: resolve_filter(raw.filter),
     }
 }
@@ -657,6 +661,7 @@ batch_install = "I"
 batch_remove = "R"
 multi_select = "Space"
 filter_mode = "f"
+name_filter = "/"
 
 [keys.packages_table.filter]
 cycle_install = "i"

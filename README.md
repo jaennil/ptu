@@ -80,6 +80,9 @@ Logs are written to `/tmp/ptu.log`.
 | `r`                | Remove selected package             |
 | `R`                | Batch remove selected packages      |
 | `f`                | Enter filter mode                   |
+| `/`                | Filter by name                      |
+| `Enter`            | Apply name filter                   |
+| `Esc`              | Clear name filter                   |
 
 #### Filter Mode (Search Tab)
 

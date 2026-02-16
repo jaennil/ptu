@@ -41,4 +41,8 @@ pub(crate) trait Component {
     fn set_active(&mut self, active: bool) {
         let _ = active;
     }
+
+    fn is_name_filter_mode(&self) -> bool {
+        false
+    }
 }

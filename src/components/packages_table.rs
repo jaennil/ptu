@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use color_eyre::eyre;
-use ratatui::crossterm::event::{KeyEvent, MouseEvent, MouseEventKind};
+use ratatui::crossterm::event::{KeyCode, KeyEvent, MouseEvent, MouseEventKind};
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
@@ -29,6 +29,8 @@ pub(crate) struct PackagesTable {
     selected_indices: HashSet<usize>,
     filter: PackageFilter,
     filter_mode: bool,
+    name_filter_mode: bool,
+    name_filter_text: String,
     keys: PackagesTableKeys,
     aur_loading: bool,
 }
@@ -43,6 +45,8 @@ impl PackagesTable {
             selected_indices: HashSet::new(),
             filter: PackageFilter::default(),
             filter_mode: false,
+            name_filter_mode: false,
+            name_filter_text: String::new(),
             keys,
             aur_loading: false,
         }
@@ -50,10 +54,15 @@ impl PackagesTable {
 
     /// Returns packages that match the current filter
     fn filtered_packages(&self) -> Vec<(usize, &Package)> {
+        let name_filter_lower = self.name_filter_text.to_lowercase();
         self.all_packages
             .iter()
             .enumerate()
             .filter(|(_, pkg)| self.filter.matches(pkg))
+            .filter(|(_, pkg)| {
+                name_filter_lower.is_empty()
+                    || pkg.name.to_lowercase().contains(&name_filter_lower)
+            })
             .collect()
     }
 
@@ -111,15 +120,9 @@ impl PackagesTable {
     }
 
     fn reset_selection(&mut self) {
-        // Find first filtered package index
-        let first_filtered_idx = self
-            .all_packages
-            .iter()
-            .enumerate()
-            .find(|(_, pkg)| self.filter.matches(pkg))
-            .map(|(idx, _)| idx);
-
-        if let Some(idx) = first_filtered_idx {
+        // Find first filtered package index (respecting both filters)
+        let filtered = self.filtered_packages();
+        if let Some(&(idx, _)) = filtered.first() {
             self.state.select(Some(idx));
             tracing::debug!(index = idx, "selection reset to first filtered package");
         } else {
@@ -206,6 +209,15 @@ impl PackagesTable {
             Style::default().fg(source_color),
         ));
 
+        // Name filter indicator
+        if self.name_filter_mode || !self.name_filter_text.is_empty() {
+            let filter_color = if self.name_filter_mode { Color::Green } else { Color::Cyan };
+            spans.push(Span::styled(
+                format!(" [/: {}]", self.name_filter_text),
+                Style::default().fg(filter_color),
+            ));
+        }
+
         // Multi-select count
         if !self.selected_indices.is_empty() {
             spans.push(Span::styled(
@@ -261,6 +273,42 @@ impl Component for PackagesTable {
         }
 
         let mut actions = Vec::new();
+
+        // Handle name filter mode keys
+        if self.name_filter_mode {
+            match key_event.code {
+                KeyCode::Char(c) => {
+                    self.name_filter_text.push(c);
+                    tracing::debug!(filter = %self.name_filter_text, "name filter text updated");
+                    self.reset_selection();
+                    if let Some(package) = self.get_selected_package() {
+                        actions.push(Action::SelectPackage(Box::new(package.clone())));
+                    }
+                }
+                KeyCode::Backspace => {
+                    self.name_filter_text.pop();
+                    tracing::debug!(filter = %self.name_filter_text, "name filter text backspace");
+                    self.reset_selection();
+                    if let Some(package) = self.get_selected_package() {
+                        actions.push(Action::SelectPackage(Box::new(package.clone())));
+                    }
+                }
+                KeyCode::Esc => {
+                    tracing::debug!("exiting name filter mode, clearing filter");
+                    self.name_filter_mode = false;
+                    self.name_filter_text.clear();
+                    self.reset_selection();
+                }
+                KeyCode::Enter => {
+                    tracing::debug!(filter = %self.name_filter_text, "applying name filter, exiting filter mode");
+                    self.name_filter_mode = false;
+                }
+                _ => {
+                    tracing::trace!(key = ?key_event.code, "key swallowed by name filter mode");
+                }
+            }
+            return Ok(Some(actions));
+        }
 
         // Handle filter mode keys
         if self.filter_mode {
@@ -319,7 +367,11 @@ impl Component for PackagesTable {
         }
 
         // Normal mode key handling
-        if config::key_matches(key_event, &self.keys.filter_mode) {
+        if config::key_matches(key_event, &self.keys.name_filter) {
+            tracing::debug!("entering name filter mode");
+            self.name_filter_mode = true;
+            self.name_filter_text.clear();
+        } else if config::key_matches(key_event, &self.keys.filter_mode) {
             tracing::debug!("entering filter mode");
             self.filter_mode = true;
         } else if config::key_matches(key_event, &self.keys.next) {
@@ -523,6 +575,10 @@ impl Component for PackagesTable {
 
     fn set_active(&mut self, active: bool) {
         self.active = active;
+    }
+
+    fn is_name_filter_mode(&self) -> bool {
+        self.name_filter_mode
     }
 
     fn handle_mouse_event(
