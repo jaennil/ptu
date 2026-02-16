@@ -369,9 +369,17 @@ pub fn parse_key(s: &str) -> Result<KeyEvent, String> {
     if parts.len() == 1 {
         key_part = parts[0];
     } else {
-        // Last part is the key, everything before is modifiers
-        key_part = parts.last().unwrap();
-        for &modifier in &parts[..parts.len() - 1] {
+        // If the last part is empty, the key itself is "+" (e.g. "Alt++" or standalone "+")
+        let (mod_parts, actual_key) = if parts.last() == Some(&"") {
+            // Key is "+"; modifiers are everything before the last two elements
+            // "+" splits to ["", ""], "Alt++" splits to ["Alt", "", ""]
+            let mod_end = if parts.len() >= 2 { parts.len() - 2 } else { 0 };
+            (&parts[..mod_end], "+")
+        } else {
+            (&parts[..parts.len() - 1], *parts.last().unwrap())
+        };
+        key_part = actual_key;
+        for &modifier in mod_parts {
             match modifier.to_lowercase().as_str() {
                 "ctrl" => modifiers |= KeyModifiers::CONTROL,
                 "alt" => modifiers |= KeyModifiers::ALT,
@@ -711,4 +719,174 @@ pub fn load() -> eyre::Result<Keymap> {
     let keymap = resolve_config(config);
     tracing::info!("config loaded successfully");
     Ok(keymap)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ratatui::crossterm::event::{KeyCode, KeyModifiers};
+
+    // -----------------------------------------------------------------------
+    // parse_key
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn parse_key_single_lowercase() {
+        let ke = parse_key("j").unwrap();
+        assert_eq!(ke.code, KeyCode::Char('j'));
+        assert_eq!(ke.modifiers, KeyModifiers::NONE);
+    }
+
+    #[test]
+    fn parse_key_single_uppercase_auto_shift() {
+        let ke = parse_key("G").unwrap();
+        assert_eq!(ke.code, KeyCode::Char('G'));
+        assert_eq!(ke.modifiers, KeyModifiers::SHIFT);
+    }
+
+    #[test]
+    fn parse_key_special_char() {
+        let ke = parse_key("?").unwrap();
+        assert_eq!(ke.code, KeyCode::Char('?'));
+        assert_eq!(ke.modifiers, KeyModifiers::NONE);
+    }
+
+    #[test]
+    fn parse_key_ctrl_modifier() {
+        let ke = parse_key("Ctrl+f").unwrap();
+        assert_eq!(ke.code, KeyCode::Char('f'));
+        assert_eq!(ke.modifiers, KeyModifiers::CONTROL);
+    }
+
+    #[test]
+    fn parse_key_alt_modifier() {
+        let ke = parse_key("Alt+j").unwrap();
+        assert_eq!(ke.code, KeyCode::Char('j'));
+        assert_eq!(ke.modifiers, KeyModifiers::ALT);
+    }
+
+    #[test]
+    fn parse_key_shift_modifier_explicit() {
+        let ke = parse_key("Shift+G").unwrap();
+        assert_eq!(ke.code, KeyCode::Char('G'));
+        assert_eq!(ke.modifiers, KeyModifiers::SHIFT);
+    }
+
+    #[test]
+    fn parse_key_special_keys() {
+        assert_eq!(parse_key("Esc").unwrap().code, KeyCode::Esc);
+        assert_eq!(parse_key("Tab").unwrap().code, KeyCode::Tab);
+        assert_eq!(parse_key("Enter").unwrap().code, KeyCode::Enter);
+        assert_eq!(parse_key("Backspace").unwrap().code, KeyCode::Backspace);
+        assert_eq!(parse_key("Space").unwrap().code, KeyCode::Char(' '));
+    }
+
+    #[test]
+    fn parse_key_function_keys() {
+        assert_eq!(parse_key("F1").unwrap().code, KeyCode::F(1));
+        assert_eq!(parse_key("F12").unwrap().code, KeyCode::F(12));
+    }
+
+    #[test]
+    fn parse_key_case_insensitive_modifiers() {
+        let ke = parse_key("ctrl+f").unwrap();
+        assert_eq!(ke.code, KeyCode::Char('f'));
+        assert_eq!(ke.modifiers, KeyModifiers::CONTROL);
+    }
+
+    #[test]
+    fn parse_key_case_insensitive_special() {
+        assert_eq!(parse_key("esc").unwrap().code, KeyCode::Esc);
+        assert_eq!(parse_key("ENTER").unwrap().code, KeyCode::Enter);
+        assert_eq!(parse_key("escape").unwrap().code, KeyCode::Esc);
+        assert_eq!(parse_key("return").unwrap().code, KeyCode::Enter);
+    }
+
+    #[test]
+    fn parse_key_plus_char() {
+        // "+" as a standalone key
+        let ke = parse_key("+").unwrap();
+        assert_eq!(ke.code, KeyCode::Char('+'));
+        assert_eq!(ke.modifiers, KeyModifiers::NONE);
+    }
+
+    #[test]
+    fn parse_key_alt_plus() {
+        let ke = parse_key("Alt++").unwrap();
+        assert_eq!(ke.code, KeyCode::Char('+'));
+        assert_eq!(ke.modifiers, KeyModifiers::ALT);
+    }
+
+    #[test]
+    fn parse_key_unknown_modifier() {
+        assert!(parse_key("Super+j").is_err());
+    }
+
+    #[test]
+    fn parse_key_unknown_key() {
+        assert!(parse_key("FooBar").is_err());
+    }
+
+    #[test]
+    fn parse_key_navigation_keys() {
+        assert_eq!(parse_key("Up").unwrap().code, KeyCode::Up);
+        assert_eq!(parse_key("Down").unwrap().code, KeyCode::Down);
+        assert_eq!(parse_key("Left").unwrap().code, KeyCode::Left);
+        assert_eq!(parse_key("Right").unwrap().code, KeyCode::Right);
+        assert_eq!(parse_key("Home").unwrap().code, KeyCode::Home);
+        assert_eq!(parse_key("End").unwrap().code, KeyCode::End);
+        assert_eq!(parse_key("PageUp").unwrap().code, KeyCode::PageUp);
+        assert_eq!(parse_key("PageDown").unwrap().code, KeyCode::PageDown);
+        assert_eq!(parse_key("Delete").unwrap().code, KeyCode::Delete);
+        assert_eq!(parse_key("Insert").unwrap().code, KeyCode::Insert);
+    }
+
+    // -----------------------------------------------------------------------
+    // key_matches
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn key_matches_single_binding() {
+        let event = KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE);
+        let bindings = vec![KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE)];
+        assert!(key_matches(&event, &bindings));
+    }
+
+    #[test]
+    fn key_matches_no_match() {
+        let event = KeyEvent::new(KeyCode::Char('k'), KeyModifiers::NONE);
+        let bindings = vec![KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE)];
+        assert!(!key_matches(&event, &bindings));
+    }
+
+    #[test]
+    fn key_matches_multiple_bindings() {
+        let event = KeyEvent::new(KeyCode::F(2), KeyModifiers::NONE);
+        let bindings = vec![
+            KeyEvent::new(KeyCode::F(1), KeyModifiers::NONE),
+            KeyEvent::new(KeyCode::F(2), KeyModifiers::NONE),
+            KeyEvent::new(KeyCode::Char('2'), KeyModifiers::ALT),
+        ];
+        assert!(key_matches(&event, &bindings));
+    }
+
+    #[test]
+    fn key_matches_modifier_mismatch() {
+        let event = KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE);
+        let bindings = vec![KeyEvent::new(KeyCode::Char('j'), KeyModifiers::ALT)];
+        assert!(!key_matches(&event, &bindings));
+    }
+
+    #[test]
+    fn key_matches_empty_bindings() {
+        let event = KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE);
+        assert!(!key_matches(&event, &[]));
+    }
+
+    #[test]
+    fn key_matches_with_modifiers() {
+        let event = KeyEvent::new(KeyCode::Char('f'), KeyModifiers::CONTROL);
+        let bindings = vec![KeyEvent::new(KeyCode::Char('f'), KeyModifiers::CONTROL)];
+        assert!(key_matches(&event, &bindings));
+    }
 }

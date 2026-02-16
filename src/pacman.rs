@@ -398,3 +398,116 @@ fn read_repos_from_pacman_conf() -> Vec<String> {
     tracing::info!(count = repos.len(), ?repos, "read repositories from pacman.conf");
     repos
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // -----------------------------------------------------------------------
+    // format_timestamp
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn format_timestamp_unix_epoch() {
+        assert_eq!(format_timestamp(0), "1970-01-01");
+    }
+
+    #[test]
+    fn format_timestamp_known_date() {
+        // 2024-01-01 00:00:00 UTC = 1704067200
+        assert_eq!(format_timestamp(1704067200), "2024-01-01");
+    }
+
+    #[test]
+    fn format_timestamp_leap_year_feb_29() {
+        // 2024-02-29 00:00:00 UTC = 1709164800
+        assert_eq!(format_timestamp(1709164800), "2024-02-29");
+    }
+
+    #[test]
+    fn format_timestamp_leap_year_mar_1() {
+        // 2024-03-01 00:00:00 UTC = 1709251200
+        assert_eq!(format_timestamp(1709251200), "2024-03-01");
+    }
+
+    #[test]
+    fn format_timestamp_non_leap_year_mar_1() {
+        // 2023-03-01 00:00:00 UTC = 1677628800
+        assert_eq!(format_timestamp(1677628800), "2023-03-01");
+    }
+
+    #[test]
+    fn format_timestamp_end_of_year() {
+        // 2023-12-31 00:00:00 UTC = 1703980800
+        assert_eq!(format_timestamp(1703980800), "2023-12-31");
+    }
+
+    #[test]
+    fn format_timestamp_mid_day() {
+        // 2024-06-15 12:30:00 UTC = 1718451000
+        // Should still show 2024-06-15 (time is ignored)
+        assert_eq!(format_timestamp(1718451000), "2024-06-15");
+    }
+
+    #[test]
+    fn format_timestamp_y2k() {
+        // 2000-01-01 00:00:00 UTC = 946684800
+        assert_eq!(format_timestamp(946684800), "2000-01-01");
+    }
+
+    #[test]
+    fn format_timestamp_century_boundary() {
+        // 2100-01-01 00:00:00 UTC = 4102444800 (not a leap year)
+        assert_eq!(format_timestamp(4102444800), "2100-01-01");
+    }
+
+    // -----------------------------------------------------------------------
+    // format_size
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn format_size_zero() {
+        assert_eq!(format_size(0), "0 B");
+    }
+
+    #[test]
+    fn format_size_bytes() {
+        assert_eq!(format_size(512), "512 B");
+    }
+
+    #[test]
+    fn format_size_one_kib() {
+        assert_eq!(format_size(1024), "1.00 KiB");
+    }
+
+    #[test]
+    fn format_size_kib() {
+        assert_eq!(format_size(5120), "5.00 KiB");
+    }
+
+    #[test]
+    fn format_size_one_mib() {
+        assert_eq!(format_size(1048576), "1.00 MiB");
+    }
+
+    #[test]
+    fn format_size_mib() {
+        assert_eq!(format_size(15_728_640), "15.00 MiB");
+    }
+
+    #[test]
+    fn format_size_one_gib() {
+        assert_eq!(format_size(1_073_741_824), "1.00 GiB");
+    }
+
+    #[test]
+    fn format_size_fractional_mib() {
+        // 1.5 MiB = 1572864 bytes
+        assert_eq!(format_size(1_572_864), "1.50 MiB");
+    }
+
+    #[test]
+    fn format_size_just_under_kib() {
+        assert_eq!(format_size(1023), "1023 B");
+    }
+}
