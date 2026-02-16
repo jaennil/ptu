@@ -488,6 +488,15 @@ impl Component for InstalledTable {
                     self.state.select(None);
                 }
             }
+            Event::AurUpdatesChecked(updates) => {
+                tracing::debug!(count = updates.len(), "applying AUR update versions to installed table");
+                for pkg in self.packages.iter_mut() {
+                    if let Some(new_ver) = updates.get(&pkg.name) {
+                        pkg.update_version = Some(new_ver.clone());
+                    }
+                }
+                self.resort();
+            }
             Event::PackageInstalled(name) => {
                 // Package might have been reinstalled; ignore if already present
                 if !self.packages.iter().any(|p| p.name == *name) {

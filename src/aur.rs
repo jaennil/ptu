@@ -1,4 +1,5 @@
-use std::collections::HashSet;
+use std::cmp::Ordering;
+use std::collections::{HashMap, HashSet};
 use std::process::{Command, ExitStatus};
 
 use color_eyre::eyre::{self, eyre};
@@ -7,6 +8,7 @@ use serde::Deserialize;
 use crate::pacman::Package;
 
 const AUR_RPC_URL: &str = "https://aur.archlinux.org/rpc/v5/search";
+const AUR_INFO_URL: &str = "https://aur.archlinux.org/rpc/v5/info";
 const MAX_RESULTS: usize = 50;
 
 #[derive(Deserialize)]
@@ -95,6 +97,58 @@ pub(crate) async fn search(query: &str, installed_packages: &HashSet<String>) ->
         .collect();
 
     Ok(packages)
+}
+
+/// Check AUR packages for available updates.
+/// Takes a list of (name, installed_version) pairs and returns a map of name -> new_version.
+pub(crate) async fn check_updates(aur_packages: Vec<(String, String)>) -> eyre::Result<HashMap<String, String>> {
+    if aur_packages.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    tracing::debug!(count = aur_packages.len(), "checking AUR packages for updates");
+
+    let client = reqwest::Client::new();
+    let mut updates = HashMap::new();
+
+    // Chunk requests at 200 packages per request
+    for chunk in aur_packages.chunks(200) {
+        let mut request = client.get(AUR_INFO_URL);
+        for (name, _) in chunk {
+            request = request.query(&[("arg[]", name.as_str())]);
+        }
+
+        let response: AurResponse = request.send().await?.json().await?;
+
+        tracing::debug!(
+            chunk_size = chunk.len(),
+            results = response.results.len(),
+            "AUR info response received"
+        );
+
+        // Build a lookup from name -> installed_version for this chunk
+        let installed: HashMap<&str, &str> = chunk
+            .iter()
+            .map(|(name, ver)| (name.as_str(), ver.as_str()))
+            .collect();
+
+        for pkg in &response.results {
+            if let Some(&local_ver) = installed.get(pkg.name.as_str()) {
+                if alpm::vercmp(local_ver.to_string(), pkg.version.clone()) == Ordering::Less {
+                    tracing::debug!(
+                        name = %pkg.name,
+                        local = local_ver,
+                        aur = %pkg.version,
+                        "AUR update available"
+                    );
+                    updates.insert(pkg.name.clone(), pkg.version.clone());
+                }
+            }
+        }
+    }
+
+    tracing::info!(count = updates.len(), "AUR updates found");
+    Ok(updates)
 }
 
 pub(crate) fn install(package_name: &str) -> eyre::Result<ExitStatus> {

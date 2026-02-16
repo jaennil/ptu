@@ -1,4 +1,5 @@
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::time::Instant;
 
 use tokio::runtime::Runtime;
@@ -46,6 +47,8 @@ pub(crate) struct App {
     aur_receiver: UnboundedReceiver<Vec<Package>>,
     file_sender: UnboundedSender<Vec<Package>>,
     file_receiver: UnboundedReceiver<Vec<Package>>,
+    aur_update_sender: UnboundedSender<HashMap<String, String>>,
+    aur_update_receiver: UnboundedReceiver<HashMap<String, String>>,
     focused: usize,
     packages_table_area: Rect,
     installed_table_area: Rect,
@@ -73,6 +76,7 @@ impl App {
             .build()?;
         let (aur_sender, aur_receiver) = tokio::sync::mpsc::unbounded_channel();
         let (file_sender, file_receiver) = tokio::sync::mpsc::unbounded_channel();
+        let (aur_update_sender, aur_update_receiver) = tokio::sync::mpsc::unbounded_channel();
 
         tracing::debug!("tokio runtime created for async searches");
 
@@ -89,6 +93,31 @@ impl App {
         let repo_updates = pacman.check_repo_updates();
         let installed_packages = pacman.get_installed_packages(&repo_updates);
         tracing::info!(count = installed_packages.len(), "loaded installed packages for Installed tab");
+
+        // Spawn async AUR update check
+        let aur_pkgs: Vec<(String, String)> = installed_packages
+            .iter()
+            .filter(|p| p.source == "aur")
+            .map(|p| (p.name.clone(), p.version.clone()))
+            .collect();
+        if !aur_pkgs.is_empty() {
+            tracing::info!(count = aur_pkgs.len(), "starting async AUR update check");
+            let sender = aur_update_sender.clone();
+            runtime.spawn(async move {
+                match aur::check_updates(aur_pkgs).await {
+                    Ok(updates) => {
+                        tracing::debug!(count = updates.len(), "AUR update check completed");
+                        if let Err(e) = sender.send(updates) {
+                            tracing::warn!(%e, "failed to send AUR update results");
+                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!(%e, "AUR update check failed");
+                    }
+                }
+            });
+        }
+
         let installed_table = InstalledTable::new(installed_packages, keymap.installed_table);
 
         Ok(Self {
@@ -107,6 +136,8 @@ impl App {
             aur_receiver,
             file_sender,
             file_receiver,
+            aur_update_sender,
+            aur_update_receiver,
             focused: 0,
             packages_table_area: Rect::default(),
             installed_table_area: Rect::default(),
@@ -257,6 +288,17 @@ impl App {
                     self.status_time = None;
                     needs_render = true;
                 }
+            }
+
+            // Check for AUR update results from async task
+            if let Ok(aur_updates) = self.aur_update_receiver.try_recv() {
+                tracing::debug!(count = aur_updates.len(), "received AUR update results");
+                let event = crate::event::Event::AurUpdatesChecked(aur_updates);
+                for component in self.components.iter_mut() {
+                    component.update(&event)?;
+                }
+                self.installed_table.update(&event)?;
+                needs_render = true;
             }
 
             // Check for file search results from async task
