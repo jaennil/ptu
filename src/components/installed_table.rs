@@ -21,6 +21,7 @@ pub(crate) enum SortColumn {
     Size,
     InstallDate,
     DepsCount,
+    Update,
 }
 
 impl SortColumn {
@@ -30,6 +31,7 @@ impl SortColumn {
             SortColumn::Size => "Size",
             SortColumn::InstallDate => "Date",
             SortColumn::DepsCount => "Deps",
+            SortColumn::Update => "Update",
         }
     }
 
@@ -38,7 +40,8 @@ impl SortColumn {
             SortColumn::Name => SortColumn::Size,
             SortColumn::Size => SortColumn::InstallDate,
             SortColumn::InstallDate => SortColumn::DepsCount,
-            SortColumn::DepsCount => SortColumn::Name,
+            SortColumn::DepsCount => SortColumn::Update,
+            SortColumn::Update => SortColumn::Name,
         }
     }
 }
@@ -104,6 +107,21 @@ impl InstalledTable {
                     da.cmp(&db)
                 }
                 SortColumn::DepsCount => packages[a].depends.len().cmp(&packages[b].depends.len()),
+                SortColumn::Update => {
+                    let has_a = packages[a].update_version.is_some();
+                    let has_b = packages[b].update_version.is_some();
+                    // Packages with updates first, then by update version string
+                    match (has_a, has_b) {
+                        (true, false) => std::cmp::Ordering::Greater,
+                        (false, true) => std::cmp::Ordering::Less,
+                        (true, true) => {
+                            let va = packages[a].update_version.as_deref().unwrap_or("");
+                            let vb = packages[b].update_version.as_deref().unwrap_or("");
+                            va.cmp(vb)
+                        }
+                        (false, false) => std::cmp::Ordering::Equal,
+                    }
+                }
             };
             if ascending { cmp } else { cmp.reverse() }
         });
@@ -261,14 +279,26 @@ impl InstalledTable {
                 .filter(|&d| d > 0)
                 .map(format_timestamp)
                 .unwrap_or_else(|| "-".to_string());
+            let update_str = package
+                .update_version
+                .as_deref()
+                .unwrap_or("-")
+                .to_string();
 
             let _ = display_idx; // used for iteration
+
+            let update_cell = if package.update_version.is_some() {
+                Cell::from(update_str).style(Style::default().fg(Color::Yellow))
+            } else {
+                Cell::from(update_str)
+            };
 
             rows.push(Row::new(vec![
                 Cell::from(format!("{}{}", marker, package.name)),
                 Cell::from(size_str),
                 Cell::from(date_str),
                 Cell::from(deps_count),
+                update_cell,
             ]));
         }
 
@@ -278,6 +308,7 @@ impl InstalledTable {
             Cell::from(Line::from(format!("size{}", sort_arrow(SortColumn::Size)))),
             Cell::from(Line::from(format!("installed{}", sort_arrow(SortColumn::InstallDate)))),
             Cell::from(Line::from(format!("deps{}", sort_arrow(SortColumn::DepsCount)))),
+            Cell::from(Line::from(format!("update{}", sort_arrow(SortColumn::Update)))),
         ])
         .style(Style::new().bold().fg(Color::Magenta));
 
@@ -286,6 +317,7 @@ impl InstalledTable {
             Constraint::Length(12), // size
             Constraint::Length(12), // install date
             Constraint::Length(6),  // deps count
+            Constraint::Length(16), // update version
         ];
 
         let border_color = if self.active {
