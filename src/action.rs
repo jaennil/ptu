@@ -12,4 +12,7 @@ pub(crate) enum Action {
     SelectPackage(Box<Package>),
     OpenUrl(String),
     RefreshInstalled,
+    SystemUpgrade,
+    RepoUpgrade,
+    AurUpgrade,
 }

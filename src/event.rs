@@ -13,4 +13,5 @@ pub(crate) enum Event {
     PackagesInstalled(Vec<String>),
     PackagesRemoved(Vec<String>),
     OperationFailed { package: String, error: String },
+    SystemUpgraded,
 }

@@ -88,6 +88,7 @@ struct InstalledTableKeysRaw {
     filter: Option<KeyBinding>,
     toggle_update_filter: Option<KeyBinding>,
     refresh: Option<KeyBinding>,
+    system_upgrade: Option<KeyBinding>,
 }
 
 #[derive(Deserialize, Default)]
@@ -195,6 +196,7 @@ pub struct InstalledTableKeys {
     pub filter: Vec<KeyEvent>,
     pub toggle_update_filter: Vec<KeyEvent>,
     pub refresh: Vec<KeyEvent>,
+    pub system_upgrade: Vec<KeyEvent>,
 }
 
 pub struct PackageInfoKeys {
@@ -317,6 +319,7 @@ impl Default for InstalledTableKeys {
             filter: vec![key('/')],
             toggle_update_filter: vec![key('u')],
             refresh: vec![key_mod('r', KeyModifiers::CONTROL)],
+            system_upgrade: vec![key_shift('U')],
         }
     }
 }
@@ -574,6 +577,7 @@ fn resolve_installed_table(raw: Option<InstalledTableKeysRaw>) -> InstalledTable
         filter: resolve_binding(raw.filter, defaults.filter),
         toggle_update_filter: resolve_binding(raw.toggle_update_filter, defaults.toggle_update_filter),
         refresh: resolve_binding(raw.refresh, defaults.refresh),
+        system_upgrade: resolve_binding(raw.system_upgrade, defaults.system_upgrade),
     }
 }
 
@@ -691,6 +695,7 @@ multi_select = "Space"
 filter = "/"
 toggle_update_filter = "u"
 refresh = "Ctrl+r"
+system_upgrade = "U"
 
 [keys.package_info]
 scroll_down = "j"

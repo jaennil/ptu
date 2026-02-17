@@ -63,6 +63,8 @@ pub(crate) struct App {
     status_is_error: bool,
     pending_action: Option<Action>,
     confirmation_text: String,
+    show_upgrade_menu: bool,
+    system_upgrade_keys: Vec<KeyEvent>,
 }
 
 impl App {
@@ -120,6 +122,7 @@ impl App {
             });
         }
 
+        let system_upgrade_keys = keymap.installed_table.system_upgrade.clone();
         let installed_table = InstalledTable::new(installed_packages, keymap.installed_table);
 
         Ok(Self {
@@ -154,6 +157,8 @@ impl App {
             status_is_error: false,
             pending_action: None,
             confirmation_text: String::new(),
+            show_upgrade_menu: false,
+            system_upgrade_keys,
         })
     }
 
@@ -338,6 +343,7 @@ impl App {
         let help_scroll = self.help_scroll;
         let show_confirmation = self.pending_action.is_some();
         let confirmation_text = self.confirmation_text.clone();
+        let show_upgrade_menu = self.show_upgrade_menu;
         let active_tab = self.active_tab;
         let status_message = self.status_message.clone();
         let status_is_error = self.status_is_error;
@@ -454,6 +460,11 @@ impl App {
             if show_confirmation {
                 Self::draw_confirmation(frame, area, &confirmation_text);
             }
+
+            // Draw upgrade menu on top of everything
+            if show_upgrade_menu {
+                Self::draw_upgrade_menu(frame, area);
+            }
         })?;
 
         self.packages_table_area = packages_table_area.into_inner();
@@ -549,6 +560,10 @@ impl App {
                             crate::event::Event::OperationFailed { package, error } => {
                                 self.set_status(format!("Failed: {} ({})", package, error), true);
                             }
+                            crate::event::Event::SystemUpgraded => {
+                                self.set_status("System upgraded".to_string(), false);
+                                self.refresh_installed();
+                            }
                             _ => {}
                         }
                     }
@@ -561,6 +576,63 @@ impl App {
                 }
                 _ => {
                     tracing::trace!(key = ?key_event.code, "key swallowed by confirmation dialog");
+                }
+            }
+            return Ok(Vec::new());
+        }
+
+        // When upgrade menu is visible, intercept all keys
+        if self.show_upgrade_menu {
+            match key_event.code {
+                crossterm::event::KeyCode::Char('a') => {
+                    tracing::info!("upgrade menu: selected all packages");
+                    self.show_upgrade_menu = false;
+                    let action = Action::SystemUpgrade;
+                    let events = self.handle_action(&action)?;
+                    for component in self.components.iter_mut() {
+                        for event in &events {
+                            component.update(event)?;
+                        }
+                    }
+                    for event in &events {
+                        self.installed_table.update(event)?;
+                    }
+                }
+                crossterm::event::KeyCode::Char('r') => {
+                    tracing::info!("upgrade menu: selected repo packages");
+                    self.show_upgrade_menu = false;
+                    let action = Action::RepoUpgrade;
+                    let events = self.handle_action(&action)?;
+                    for component in self.components.iter_mut() {
+                        for event in &events {
+                            component.update(event)?;
+                        }
+                    }
+                    for event in &events {
+                        self.installed_table.update(event)?;
+                    }
+                }
+                crossterm::event::KeyCode::Char('u') => {
+                    tracing::info!("upgrade menu: selected AUR packages");
+                    self.show_upgrade_menu = false;
+                    let action = Action::AurUpgrade;
+                    let events = self.handle_action(&action)?;
+                    for component in self.components.iter_mut() {
+                        for event in &events {
+                            component.update(event)?;
+                        }
+                    }
+                    for event in &events {
+                        self.installed_table.update(event)?;
+                    }
+                }
+                crossterm::event::KeyCode::Esc => {
+                    tracing::info!("upgrade menu: cancelled");
+                    self.show_upgrade_menu = false;
+                    self.set_status("Cancelled".to_string(), false);
+                }
+                _ => {
+                    tracing::trace!(key = ?key_event.code, "key swallowed by upgrade menu");
                 }
             }
             return Ok(Vec::new());
@@ -654,6 +726,15 @@ impl App {
                     AppTab::Installed => self.set_focus(0),
                 }
             }
+            return Ok(Vec::new());
+        }
+
+        // Handle system upgrade key on Installed tab
+        if self.active_tab == AppTab::Installed
+            && config::key_matches(key_event, &self.system_upgrade_keys)
+        {
+            tracing::debug!("opening upgrade menu");
+            self.show_upgrade_menu = true;
             return Ok(Vec::new());
         }
 
@@ -969,6 +1050,10 @@ impl App {
                 Span::styled("   Ctrl+r        ", key_style),
                 Span::styled("Refresh packages and updates", desc_style),
             ]),
+            Line::from(vec![
+                Span::styled("   U             ", key_style),
+                Span::styled("System upgrade menu", desc_style),
+            ]),
             Line::from(""),
             Line::from(Span::styled(" Package Info", header_style)),
             Line::from(vec![
@@ -1046,6 +1131,56 @@ impl App {
         Ok(())
     }
 
+    fn refresh_installed(&mut self) {
+        tracing::info!("refreshing installed packages");
+        match Pacman::new() {
+            Ok(new_pacman) => {
+                self.pacman = new_pacman;
+                let repo_updates = self.pacman.check_repo_updates();
+                let new_packages = self.pacman.get_installed_packages(&repo_updates);
+                let count = new_packages.len();
+                tracing::info!(count, "reloaded installed packages");
+
+                // Spawn async AUR update check
+                let aur_pkgs: Vec<(String, String)> = new_packages
+                    .iter()
+                    .filter(|p| p.source == "aur")
+                    .map(|p| (p.name.clone(), p.version.clone()))
+                    .collect();
+                if !aur_pkgs.is_empty() {
+                    tracing::info!(count = aur_pkgs.len(), "starting async AUR update check after refresh");
+                    let sender = self.aur_update_sender.clone();
+                    self.runtime.spawn(async move {
+                        match aur::check_updates(aur_pkgs).await {
+                            Ok(updates) => {
+                                tracing::debug!(count = updates.len(), "AUR update check completed after refresh");
+                                if let Err(e) = sender.send(updates) {
+                                    tracing::warn!(%e, "failed to send AUR update results after refresh");
+                                }
+                            }
+                            Err(e) => {
+                                tracing::warn!(%e, "AUR update check failed after refresh");
+                            }
+                        }
+                    });
+                }
+
+                self.installed_table.reload(new_packages.clone());
+
+                // Select first package if available
+                if let Some(first) = new_packages.first() {
+                    let event = crate::event::Event::PackageSelected(Box::new(first.clone()));
+                    for component in self.components.iter_mut() {
+                        let _ = component.update(&event);
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::warn!(%e, "failed to refresh installed packages");
+            }
+        }
+    }
+
     fn set_status(&mut self, message: String, is_error: bool) {
         tracing::debug!(message, is_error, "status message set");
         self.status_message = Some(message);
@@ -1082,6 +1217,24 @@ impl App {
             }
             Action::RemovePackages { packages } => {
                 self.confirmation_text = format!("Remove {} packages?", packages.len());
+                self.pending_action = Some(action.clone());
+                tracing::debug!(text = %self.confirmation_text, "showing confirmation dialog");
+                return Ok(Vec::new());
+            }
+            Action::SystemUpgrade => {
+                self.confirmation_text = "Upgrade all packages?".to_string();
+                self.pending_action = Some(action.clone());
+                tracing::debug!(text = %self.confirmation_text, "showing confirmation dialog");
+                return Ok(Vec::new());
+            }
+            Action::RepoUpgrade => {
+                self.confirmation_text = "Upgrade repo packages?".to_string();
+                self.pending_action = Some(action.clone());
+                tracing::debug!(text = %self.confirmation_text, "showing confirmation dialog");
+                return Ok(Vec::new());
+            }
+            Action::AurUpgrade => {
+                self.confirmation_text = "Upgrade AUR packages?".to_string();
                 self.pending_action = Some(action.clone());
                 tracing::debug!(text = %self.confirmation_text, "showing confirmation dialog");
                 return Ok(Vec::new());
@@ -1140,45 +1293,8 @@ impl App {
                 events.push(crate::event::Event::PackageSelected(package.clone()));
             }
             Action::RefreshInstalled => {
-                tracing::info!("refreshing installed packages");
-                self.pacman = Pacman::new()?;
-                let repo_updates = self.pacman.check_repo_updates();
-                let new_packages = self.pacman.get_installed_packages(&repo_updates);
-                let count = new_packages.len();
-                tracing::info!(count, "reloaded installed packages");
-
-                // Spawn async AUR update check
-                let aur_pkgs: Vec<(String, String)> = new_packages
-                    .iter()
-                    .filter(|p| p.source == "aur")
-                    .map(|p| (p.name.clone(), p.version.clone()))
-                    .collect();
-                if !aur_pkgs.is_empty() {
-                    tracing::info!(count = aur_pkgs.len(), "starting async AUR update check after refresh");
-                    let sender = self.aur_update_sender.clone();
-                    self.runtime.spawn(async move {
-                        match aur::check_updates(aur_pkgs).await {
-                            Ok(updates) => {
-                                tracing::debug!(count = updates.len(), "AUR update check completed after refresh");
-                                if let Err(e) = sender.send(updates) {
-                                    tracing::warn!(%e, "failed to send AUR update results after refresh");
-                                }
-                            }
-                            Err(e) => {
-                                tracing::warn!(%e, "AUR update check failed after refresh");
-                            }
-                        }
-                    });
-                }
-
-                self.installed_table.reload(new_packages.clone());
-
-                // Select first package if available
-                if let Some(first) = new_packages.first() {
-                    events.push(crate::event::Event::PackageSelected(Box::new(first.clone())));
-                }
-
-                self.set_status(format!("Refreshed {} packages", count), false);
+                self.refresh_installed();
+                self.set_status("Refreshed packages".to_string(), false);
             }
             Action::OpenUrl(url) => {
                 tracing::info!(url, "opening URL in browser");
@@ -1198,7 +1314,10 @@ impl App {
             | Action::UpdateInstallPackage { .. }
             | Action::RemovePackage { .. }
             | Action::InstallPackages { .. }
-            | Action::RemovePackages { .. } => unreachable!(),
+            | Action::RemovePackages { .. }
+            | Action::SystemUpgrade
+            | Action::RepoUpgrade
+            | Action::AurUpgrade => unreachable!(),
         };
 
         Ok(events)
@@ -1385,6 +1504,67 @@ impl App {
                     events.push(crate::event::Event::PackagesRemoved(removed_names));
                 }
             }
+            Action::SystemUpgrade => {
+                tracing::info!("executing system upgrade (all packages)");
+                let mut success = false;
+                self.tui.suspend(|| -> eyre::Result<()> {
+                    let status = aur::system_upgrade()
+                        .or_else(|e| {
+                            tracing::warn!(%e, "AUR helper not available, falling back to pacman");
+                            pacman::system_upgrade()
+                        })?;
+                    success = status.success();
+                    Ok(())
+                })?;
+                if success {
+                    tracing::info!("system upgrade completed successfully");
+                    events.push(crate::event::Event::SystemUpgraded);
+                } else {
+                    tracing::warn!("system upgrade failed");
+                    events.push(crate::event::Event::OperationFailed {
+                        package: "system".to_string(),
+                        error: "upgrade failed".to_string(),
+                    });
+                }
+            }
+            Action::RepoUpgrade => {
+                tracing::info!("executing repo upgrade (pacman -Syu)");
+                let mut success = false;
+                self.tui.suspend(|| -> eyre::Result<()> {
+                    let status = pacman::system_upgrade()?;
+                    success = status.success();
+                    Ok(())
+                })?;
+                if success {
+                    tracing::info!("repo upgrade completed successfully");
+                    events.push(crate::event::Event::SystemUpgraded);
+                } else {
+                    tracing::warn!("repo upgrade failed");
+                    events.push(crate::event::Event::OperationFailed {
+                        package: "system".to_string(),
+                        error: "repo upgrade failed".to_string(),
+                    });
+                }
+            }
+            Action::AurUpgrade => {
+                tracing::info!("executing AUR upgrade (yay -Sua)");
+                let mut success = false;
+                self.tui.suspend(|| -> eyre::Result<()> {
+                    let status = aur::aur_upgrade()?;
+                    success = status.success();
+                    Ok(())
+                })?;
+                if success {
+                    tracing::info!("AUR upgrade completed successfully");
+                    events.push(crate::event::Event::SystemUpgraded);
+                } else {
+                    tracing::warn!("AUR upgrade failed");
+                    events.push(crate::event::Event::OperationFailed {
+                        package: "system".to_string(),
+                        error: "AUR upgrade failed".to_string(),
+                    });
+                }
+            }
             _ => {
                 tracing::warn!("handle_action_confirmed called with non-destructive action");
             }
@@ -1419,6 +1599,48 @@ impl App {
                 Span::styled(" Yes  ", Style::default().fg(Color::White)),
                 Span::styled("[n/Esc]", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
                 Span::styled(" Cancel", Style::default().fg(Color::White)),
+            ]),
+        ];
+
+        let paragraph = Paragraph::new(lines)
+            .block(block)
+            .wrap(Wrap { trim: false });
+
+        frame.render_widget(paragraph, popup_area);
+    }
+
+    fn draw_upgrade_menu(frame: &mut ratatui::Frame, area: Rect) {
+        let popup_width = (area.width as u32 * 40 / 100).max(34) as u16;
+        let popup_height = 6u16;
+        let popup_x = area.x + (area.width.saturating_sub(popup_width)) / 2;
+        let popup_y = area.y + (area.height.saturating_sub(popup_height)) / 2;
+        let popup_area = Rect::new(popup_x, popup_y, popup_width, popup_height);
+
+        frame.render_widget(Clear, popup_area);
+
+        let block = Block::default()
+            .title(" Upgrade ")
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(Color::Yellow))
+            .style(Style::default().bg(Color::Black));
+
+        let key_style = Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD);
+        let desc_style = Style::default().fg(Color::White);
+        let dim_style = Style::default().fg(Color::DarkGray);
+
+        let lines = vec![
+            Line::from(vec![
+                Span::styled("[a]", key_style),
+                Span::styled(" All   ", desc_style),
+                Span::styled("[r]", key_style),
+                Span::styled(" Repo   ", desc_style),
+                Span::styled("[u]", key_style),
+                Span::styled(" AUR", desc_style),
+            ]),
+            Line::from(""),
+            Line::from(vec![
+                Span::styled("[Esc]", dim_style),
+                Span::styled(" Cancel", dim_style),
             ]),
         ];
 

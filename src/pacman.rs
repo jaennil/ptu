@@ -227,6 +227,16 @@ pub(crate) fn update_install_package(package_name: &str) -> eyre::Result<ExitSta
     Ok(status)
 }
 
+pub(crate) fn system_upgrade() -> eyre::Result<ExitStatus> {
+    tracing::info!("executing sudo pacman -Syu (system upgrade)");
+    let status = Command::new("sudo")
+        .arg("pacman")
+        .arg("-Syu")
+        .status()?;
+    tracing::debug!(code = ?status.code(), "pacman -Syu completed");
+    Ok(status)
+}
+
 pub(crate) fn install_packages(names: &[&str]) -> eyre::Result<ExitStatus> {
     tracing::debug!(?names, "executing pacman -S for multiple packages");
     let status = Command::new("sudo")

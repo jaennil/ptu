@@ -151,6 +151,22 @@ pub(crate) async fn check_updates(aur_packages: Vec<(String, String)>) -> eyre::
     Ok(updates)
 }
 
+pub(crate) fn system_upgrade() -> eyre::Result<ExitStatus> {
+    let helper = find_aur_helper()?;
+    tracing::info!(helper = %helper, "executing system upgrade (all packages)");
+    let status = Command::new(&helper).arg("-Syu").status()?;
+    tracing::debug!(code = ?status.code(), "system upgrade completed");
+    Ok(status)
+}
+
+pub(crate) fn aur_upgrade() -> eyre::Result<ExitStatus> {
+    let helper = find_aur_helper()?;
+    tracing::info!(helper = %helper, "executing AUR-only upgrade");
+    let status = Command::new(&helper).arg("-Sua").status()?;
+    tracing::debug!(code = ?status.code(), "AUR upgrade completed");
+    Ok(status)
+}
+
 pub(crate) fn install(package_name: &str) -> eyre::Result<ExitStatus> {
     let helper = find_aur_helper()?;
     tracing::info!(package_name, helper = %helper, "installing AUR package");
