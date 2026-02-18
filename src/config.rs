@@ -87,6 +87,7 @@ struct InstalledTableKeysRaw {
     multi_select: Option<KeyBinding>,
     filter: Option<KeyBinding>,
     toggle_update_filter: Option<KeyBinding>,
+    toggle_orphan_filter: Option<KeyBinding>,
     refresh: Option<KeyBinding>,
     system_upgrade: Option<KeyBinding>,
 }
@@ -195,6 +196,7 @@ pub struct InstalledTableKeys {
     pub multi_select: Vec<KeyEvent>,
     pub filter: Vec<KeyEvent>,
     pub toggle_update_filter: Vec<KeyEvent>,
+    pub toggle_orphan_filter: Vec<KeyEvent>,
     pub refresh: Vec<KeyEvent>,
     pub system_upgrade: Vec<KeyEvent>,
 }
@@ -318,6 +320,7 @@ impl Default for InstalledTableKeys {
             multi_select: vec![key_special(KeyCode::Char(' '))],
             filter: vec![key('/')],
             toggle_update_filter: vec![key('u')],
+            toggle_orphan_filter: vec![key('o')],
             refresh: vec![key_mod('r', KeyModifiers::CONTROL)],
             system_upgrade: vec![key_shift('U')],
         }
@@ -576,6 +579,7 @@ fn resolve_installed_table(raw: Option<InstalledTableKeysRaw>) -> InstalledTable
         multi_select: resolve_binding(raw.multi_select, defaults.multi_select),
         filter: resolve_binding(raw.filter, defaults.filter),
         toggle_update_filter: resolve_binding(raw.toggle_update_filter, defaults.toggle_update_filter),
+        toggle_orphan_filter: resolve_binding(raw.toggle_orphan_filter, defaults.toggle_orphan_filter),
         refresh: resolve_binding(raw.refresh, defaults.refresh),
         system_upgrade: resolve_binding(raw.system_upgrade, defaults.system_upgrade),
     }
@@ -694,6 +698,7 @@ batch_remove = "R"
 multi_select = "Space"
 filter = "/"
 toggle_update_filter = "u"
+toggle_orphan_filter = "o"
 refresh = "Ctrl+r"
 system_upgrade = "U"
 

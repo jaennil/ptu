@@ -104,6 +104,9 @@ impl Pacman {
 
             let update_version = repo_updates.get(pkg.name()).cloned();
 
+            let is_orphan = pkg.reason() == alpm::PackageReason::Depend
+                && pkg.required_by().is_empty();
+
             packages.push(Package {
                 name: pkg.name().to_owned(),
                 source,
@@ -133,6 +136,7 @@ impl Pacman {
                 first_submitted: None,
                 last_modified: None,
                 update_version,
+                is_orphan,
             });
         }
 
@@ -182,6 +186,7 @@ impl Pacman {
                     first_submitted: None,
                     last_modified: None,
                     update_version: None,
+                    is_orphan: false,
                 });
                 if packages.len() >= MAX_RESULTS {
                     tracing::debug!("pacman search hit limit of {} results", MAX_RESULTS);
@@ -374,6 +379,7 @@ pub(crate) struct Package {
     pub(crate) first_submitted: Option<i64>,
     pub(crate) last_modified: Option<i64>,
     pub(crate) update_version: Option<String>,
+    pub(crate) is_orphan: bool,
 }
 
 /// Format bytes into human-readable string (KiB, MiB, GiB)

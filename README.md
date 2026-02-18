@@ -110,6 +110,7 @@ Logs are written to `/tmp/ptu.log`.
 | `Enter`            | Apply filter                        |
 | `Esc`              | Clear filter                        |
 | `u`                | Toggle update filter                |
+| `o`                | Toggle orphan filter                |
 | `Ctrl+r`           | Refresh packages and updates        |
 | `U`                | System upgrade menu                 |
 

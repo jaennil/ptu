@@ -1047,6 +1047,10 @@ impl App {
                 Span::styled("Toggle update filter", desc_style),
             ]),
             Line::from(vec![
+                Span::styled("   o             ", key_style),
+                Span::styled("Toggle orphan filter", desc_style),
+            ]),
+            Line::from(vec![
                 Span::styled("   Ctrl+r        ", key_style),
                 Span::styled("Refresh packages and updates", desc_style),
             ]),

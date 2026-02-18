@@ -59,6 +59,7 @@ pub(crate) struct InstalledTable {
     filter_mode: bool,
     filter_text: String,
     update_filter: bool,
+    orphan_filter: bool,
 }
 
 impl InstalledTable {
@@ -77,6 +78,7 @@ impl InstalledTable {
             filter_mode: false,
             filter_text: String::new(),
             update_filter: false,
+            orphan_filter: false,
         };
         table.resort();
         if !table.sorted_indices.is_empty() {
@@ -100,6 +102,7 @@ impl InstalledTable {
     fn resort(&mut self) {
         let filter_lower = self.filter_text.to_lowercase();
         let update_filter = self.update_filter;
+        let orphan_filter = self.orphan_filter;
 
         self.sorted_indices = (0..self.packages.len())
             .filter(|&i| {
@@ -109,6 +112,9 @@ impl InstalledTable {
                     return false;
                 }
                 if update_filter && self.packages[i].update_version.is_none() {
+                    return false;
+                }
+                if orphan_filter && !self.packages[i].is_orphan {
                     return false;
                 }
                 true
@@ -250,6 +256,14 @@ impl InstalledTable {
             ));
         }
 
+        // Show orphan filter indicator
+        if self.orphan_filter {
+            spans.push(Span::styled(
+                " [o:Orphans]".to_string(),
+                Style::default().fg(Color::Yellow),
+            ));
+        }
+
         // Show filter indicator
         if self.filter_mode || !self.filter_text.is_empty() {
             let filter_color = if self.filter_mode { Color::Green } else { Color::Cyan };
@@ -276,7 +290,7 @@ impl InstalledTable {
         }
 
         // Show filtered/total count when filter is active
-        let count_label = if !self.filter_text.is_empty() || self.update_filter {
+        let count_label = if !self.filter_text.is_empty() || self.update_filter || self.orphan_filter {
             format!(" {}/{} packages", self.sorted_indices.len(), self.packages.len())
         } else {
             format!(" {} packages", self.packages.len())
@@ -511,6 +525,28 @@ impl Component for InstalledTable {
         } else if config::key_matches(key_event, &self.keys.toggle_update_filter) {
             self.update_filter = !self.update_filter;
             tracing::debug!(update_filter = self.update_filter, "toggled update filter");
+            let selected_pkg_idx = self.selected_package_index();
+            self.resort();
+            if let Some(pkg_idx) = selected_pkg_idx {
+                if let Some(new_pos) = self.sorted_indices.iter().position(|&i| i == pkg_idx) {
+                    self.state.select(Some(new_pos));
+                } else if !self.sorted_indices.is_empty() {
+                    self.state.select(Some(0));
+                    if let Some(package) = self.get_selected_package() {
+                        actions.push(Action::SelectPackage(Box::new(package.clone())));
+                    }
+                } else {
+                    self.state.select(None);
+                }
+            } else if !self.sorted_indices.is_empty() {
+                self.state.select(Some(0));
+                if let Some(package) = self.get_selected_package() {
+                    actions.push(Action::SelectPackage(Box::new(package.clone())));
+                }
+            }
+        } else if config::key_matches(key_event, &self.keys.toggle_orphan_filter) {
+            self.orphan_filter = !self.orphan_filter;
+            tracing::debug!(orphan_filter = self.orphan_filter, "toggled orphan filter");
             let selected_pkg_idx = self.selected_package_index();
             self.resort();
             if let Some(pkg_idx) = selected_pkg_idx {
