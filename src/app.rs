@@ -1294,7 +1294,12 @@ impl App {
             }
             Action::SelectPackage(package) => {
                 tracing::debug!(package_name = package.name, "package selected");
-                events.push(crate::event::Event::PackageSelected(package.clone()));
+                let mut package = *package.clone();
+                if package.installed && package.files.is_empty() {
+                    tracing::debug!(name = package.name, "loading files on-demand for installed package");
+                    package.files = self.pacman.get_package_files(&package.name);
+                }
+                events.push(crate::event::Event::PackageSelected(Box::new(package)));
             }
             Action::RefreshInstalled => {
                 self.refresh_installed();

@@ -146,6 +146,26 @@ impl Pacman {
         packages
     }
 
+    pub(crate) fn get_package_files(&self, name: &str) -> Vec<String> {
+        tracing::debug!(name, "loading package files from localdb");
+        match self.handle.localdb().pkg(name) {
+            Ok(pkg) => {
+                let files: Vec<String> = pkg
+                    .files()
+                    .files()
+                    .iter()
+                    .map(|f| format!("/{}", String::from_utf8_lossy(f.name())))
+                    .collect();
+                tracing::debug!(name, count = files.len(), "loaded package files");
+                files
+            }
+            Err(e) => {
+                tracing::warn!(name, %e, "failed to load package files");
+                Vec::new()
+            }
+        }
+    }
+
     pub(crate) fn search_package(&self, package_name: &str) -> eyre::Result<Vec<Package>> {
         const MAX_RESULTS: usize = 100;
         let mut packages = Vec::with_capacity(MAX_RESULTS);
