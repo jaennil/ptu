@@ -711,6 +711,7 @@ scroll_down = "j"
 scroll_up = "k"
 page_down = "Ctrl+d"
 page_up = "Ctrl+u"
+toggle_section = "Enter"
 open_url = "o"
 
 [keys.help]

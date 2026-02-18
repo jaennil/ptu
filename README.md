@@ -120,6 +120,7 @@ Logs are written to `/tmp/ptu.log`.
 |--------------------|-------------------------------------|
 | `j` / `k`          | Scroll down / up                    |
 | `Ctrl+d` / `Ctrl+u`| Page down / up                     |
+| `Enter`            | Toggle section collapse             |
 | `o`                | Open package URL in browser         |
 | `Mouse scroll`     | Scroll packages table or info panel |
 

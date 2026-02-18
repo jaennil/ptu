@@ -1069,6 +1069,10 @@ impl App {
                 Span::styled("Page down / up", desc_style),
             ]),
             Line::from(vec![
+                Span::styled("   Enter         ", key_style),
+                Span::styled("Toggle section collapse", desc_style),
+            ]),
+            Line::from(vec![
                 Span::styled("   o             ", key_style),
                 Span::styled("Open URL in browser", desc_style),
             ]),
