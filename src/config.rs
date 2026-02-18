@@ -98,6 +98,7 @@ struct PackageInfoKeysRaw {
     scroll_up: Option<KeyBinding>,
     page_down: Option<KeyBinding>,
     page_up: Option<KeyBinding>,
+    toggle_section: Option<KeyBinding>,
     open_url: Option<KeyBinding>,
 }
 
@@ -206,6 +207,7 @@ pub struct PackageInfoKeys {
     pub scroll_up: Vec<KeyEvent>,
     pub page_down: Vec<KeyEvent>,
     pub page_up: Vec<KeyEvent>,
+    pub toggle_section: Vec<KeyEvent>,
     pub open_url: Vec<KeyEvent>,
 }
 
@@ -334,6 +336,7 @@ impl Default for PackageInfoKeys {
             scroll_up: vec![key('k')],
             page_down: vec![key_mod('d', KeyModifiers::CONTROL)],
             page_up: vec![key_mod('u', KeyModifiers::CONTROL)],
+            toggle_section: vec![key_special(KeyCode::Enter)],
             open_url: vec![key('o')],
         }
     }
@@ -593,6 +596,7 @@ fn resolve_package_info(raw: Option<PackageInfoKeysRaw>) -> PackageInfoKeys {
         scroll_up: resolve_binding(raw.scroll_up, defaults.scroll_up),
         page_down: resolve_binding(raw.page_down, defaults.page_down),
         page_up: resolve_binding(raw.page_up, defaults.page_up),
+        toggle_section: resolve_binding(raw.toggle_section, defaults.toggle_section),
         open_url: resolve_binding(raw.open_url, defaults.open_url),
     }
 }
