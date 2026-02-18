@@ -104,8 +104,8 @@ impl Pacman {
 
             let update_version = repo_updates.get(pkg.name()).cloned();
 
-            let is_orphan = pkg.reason() == alpm::PackageReason::Depend
-                && pkg.required_by().is_empty();
+            let required_by: Vec<String> = pkg.required_by().iter().map(|s| s.to_string()).collect();
+            let is_orphan = pkg.reason() == alpm::PackageReason::Depend && required_by.is_empty();
 
             packages.push(Package {
                 name: pkg.name().to_owned(),
@@ -127,6 +127,8 @@ impl Pacman {
                 groups: pkg.groups().iter().map(|s| s.to_string()).collect(),
                 provides: pkg.provides().iter().map(|d| d.name().to_string()).collect(),
                 conflicts: pkg.conflicts().iter().map(|d| d.name().to_string()).collect(),
+                required_by,
+                files: Vec::new(),
                 build_date: Some(pkg.build_date()),
                 install_date: Some(pkg.install_date().unwrap_or(0)),
                 matched_files: Vec::new(),
@@ -177,6 +179,8 @@ impl Pacman {
                     groups: pkg.groups().iter().map(|s| s.to_string()).collect(),
                     provides: pkg.provides().iter().map(|d| d.name().to_string()).collect(),
                     conflicts: pkg.conflicts().iter().map(|d| d.name().to_string()).collect(),
+                    required_by: Vec::new(),
+                    files: Vec::new(),
                     build_date: Some(pkg.build_date()),
                     install_date: None,
                     matched_files: Vec::new(),
@@ -368,6 +372,8 @@ pub(crate) struct Package {
     pub(crate) groups: Vec<String>,
     pub(crate) provides: Vec<String>,
     pub(crate) conflicts: Vec<String>,
+    pub(crate) required_by: Vec<String>,
+    pub(crate) files: Vec<String>,
     pub(crate) build_date: Option<i64>,
     pub(crate) install_date: Option<i64>,
     // File search results
