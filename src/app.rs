@@ -1,5 +1,5 @@
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::time::Instant;
 
 use tokio::runtime::Runtime;
@@ -65,6 +65,8 @@ pub(crate) struct App {
     confirmation_text: String,
     show_upgrade_menu: bool,
     system_upgrade_keys: Vec<KeyEvent>,
+    basket: Vec<(String, String)>,
+    basket_names: HashSet<String>,
 }
 
 impl App {
@@ -159,6 +161,8 @@ impl App {
             confirmation_text: String::new(),
             show_upgrade_menu: false,
             system_upgrade_keys,
+            basket: Vec::new(),
+            basket_names: HashSet::new(),
         })
     }
 
@@ -347,32 +351,29 @@ impl App {
         let active_tab = self.active_tab;
         let status_message = self.status_message.clone();
         let status_is_error = self.status_is_error;
+        let basket_items: Vec<String> = self.basket.iter().map(|(n, _)| n.clone()).collect();
+        let basket_count = basket_items.len();
 
         self.tui.draw(|frame| {
             let area = frame.area();
 
             let has_status = status_message.is_some();
+            let basket_height: u16 = if basket_count > 0 { 1 } else { 0 };
+            let status_height: u16 = if has_status { STATUS_BAR_HEIGHT } else { 0 };
 
-            // Split: tab bar (1 line) + content + optional status bar
-            let main_layout = if has_status {
-                Layout::vertical([
-                    Constraint::Length(TAB_BAR_HEIGHT),
-                    Constraint::Percentage(100),
-                    Constraint::Length(STATUS_BAR_HEIGHT),
-                ])
-                .split(area)
-            } else {
-                Layout::vertical([
-                    Constraint::Length(TAB_BAR_HEIGHT),
-                    Constraint::Percentage(100),
-                    Constraint::Length(0),
-                ])
-                .split(area)
-            };
+            // Split: tab bar (1 line) + content + optional basket bar + optional status bar
+            let main_layout = Layout::vertical([
+                Constraint::Length(TAB_BAR_HEIGHT),
+                Constraint::Percentage(100),
+                Constraint::Length(basket_height),
+                Constraint::Length(status_height),
+            ])
+            .split(area);
 
             let tab_bar_area = main_layout[0];
             let content_area = main_layout[1];
-            let status_area = main_layout[2];
+            let basket_area = main_layout[2];
+            let status_area = main_layout[3];
 
             // Draw tab bar
             Self::draw_tab_bar(frame, tab_bar_area, active_tab);
@@ -439,6 +440,22 @@ impl App {
                         return;
                     }
                 }
+            }
+
+            // Draw basket bar
+            if basket_count > 0 {
+                let names_str = basket_items.join("  ");
+                let basket_line = Line::from(vec![
+                    Span::styled(
+                        format!("[{}sel] ", basket_count),
+                        Style::default().fg(Color::Rgb(255, 165, 0)).add_modifier(Modifier::BOLD),
+                    ),
+                    Span::styled(
+                        names_str,
+                        Style::default().fg(Color::Rgb(255, 165, 0)),
+                    ),
+                ]);
+                frame.render_widget(basket_line, basket_area);
             }
 
             // Draw status bar
@@ -547,15 +564,23 @@ impl App {
                         match event {
                             crate::event::Event::PackageInstalled(name) => {
                                 self.set_status(format!("Installed: {}", name), false);
+                                self.clear_basket();
+                                self.propagate_basket_changed()?;
                             }
                             crate::event::Event::PackageRemoved(name) => {
                                 self.set_status(format!("Removed: {}", name), false);
+                                self.clear_basket();
+                                self.propagate_basket_changed()?;
                             }
                             crate::event::Event::PackagesInstalled(names) => {
                                 self.set_status(format!("Installed {} packages", names.len()), false);
+                                self.clear_basket();
+                                self.propagate_basket_changed()?;
                             }
                             crate::event::Event::PackagesRemoved(names) => {
                                 self.set_status(format!("Removed {} packages", names.len()), false);
+                                self.clear_basket();
+                                self.propagate_basket_changed()?;
                             }
                             crate::event::Event::OperationFailed { package, error } => {
                                 self.set_status(format!("Failed: {} ({})", package, error), true);
@@ -960,7 +985,7 @@ impl App {
             ]),
             Line::from(vec![
                 Span::styled("   Space         ", key_style),
-                Span::styled("Toggle multi-select", desc_style),
+                Span::styled("Add/remove to selection basket", desc_style),
             ]),
             Line::from(vec![
                 Span::styled("   f             ", key_style),
@@ -1028,7 +1053,7 @@ impl App {
             ]),
             Line::from(vec![
                 Span::styled("   Space         ", key_style),
-                Span::styled("Toggle multi-select", desc_style),
+                Span::styled("Add/remove to selection basket", desc_style),
             ]),
             Line::from(vec![
                 Span::styled("   /             ", key_style),
@@ -1114,20 +1139,28 @@ impl App {
             self.installed_table.update(event)?;
         }
 
-        // Set status messages from events
+        // Set status messages and clear basket after operations
         for event in &events {
             match event {
                 crate::event::Event::PackageInstalled(name) => {
                     self.set_status(format!("Installed: {}", name), false);
+                    self.clear_basket();
+                    self.propagate_basket_changed()?;
                 }
                 crate::event::Event::PackageRemoved(name) => {
                     self.set_status(format!("Removed: {}", name), false);
+                    self.clear_basket();
+                    self.propagate_basket_changed()?;
                 }
                 crate::event::Event::PackagesInstalled(names) => {
                     self.set_status(format!("Installed {} packages", names.len()), false);
+                    self.clear_basket();
+                    self.propagate_basket_changed()?;
                 }
                 crate::event::Event::PackagesRemoved(names) => {
                     self.set_status(format!("Removed {} packages", names.len()), false);
+                    self.clear_basket();
+                    self.propagate_basket_changed()?;
                 }
                 crate::event::Event::OperationFailed { package, error } => {
                     self.set_status(format!("Failed: {} ({})", package, error), true);
@@ -1196,6 +1229,35 @@ impl App {
         self.status_is_error = is_error;
     }
 
+    fn toggle_basket(&mut self, name: String, source: String) {
+        if self.basket_names.contains(&name) {
+            tracing::debug!(%name, "removing from basket");
+            self.basket_names.remove(&name);
+            self.basket.retain(|(n, _)| n != &name);
+        } else {
+            tracing::debug!(%name, %source, "adding to basket");
+            self.basket_names.insert(name.clone());
+            self.basket.push((name, source));
+        }
+    }
+
+    fn clear_basket(&mut self) {
+        if !self.basket.is_empty() {
+            tracing::debug!(count = self.basket.len(), "clearing basket");
+            self.basket.clear();
+            self.basket_names.clear();
+        }
+    }
+
+    fn propagate_basket_changed(&mut self) -> eyre::Result<()> {
+        let event = crate::event::Event::BasketChanged(self.basket_names.clone());
+        for component in self.components.iter_mut() {
+            component.update(&event)?;
+        }
+        self.installed_table.update(&event)?;
+        Ok(())
+    }
+
     fn handle_action(&mut self, action: &Action) -> eyre::Result<Vec<crate::event::Event>> {
         // Intercept destructive actions: show confirmation dialog instead of executing
         match action {
@@ -1206,9 +1268,17 @@ impl App {
                 return Ok(Vec::new());
             }
             Action::UpdateInstallPackage { name, .. } => {
-                self.confirmation_text = format!("Update {}?", name);
-                self.pending_action = Some(action.clone());
-                tracing::debug!(text = %self.confirmation_text, "showing confirmation dialog");
+                // If basket is non-empty, use basket for batch install
+                if !self.basket.is_empty() {
+                    let packages = self.basket.clone();
+                    self.confirmation_text = format!("Install {} packages?", packages.len());
+                    self.pending_action = Some(Action::InstallPackages { packages });
+                    tracing::debug!(text = %self.confirmation_text, "showing confirmation dialog (basket batch install)");
+                } else {
+                    self.confirmation_text = format!("Update {}?", name);
+                    self.pending_action = Some(action.clone());
+                    tracing::debug!(text = %self.confirmation_text, "showing confirmation dialog");
+                }
                 return Ok(Vec::new());
             }
             Action::RemovePackage { name, .. } => {
@@ -1218,14 +1288,26 @@ impl App {
                 return Ok(Vec::new());
             }
             Action::InstallPackages { packages } => {
-                self.confirmation_text = format!("Install {} packages?", packages.len());
-                self.pending_action = Some(action.clone());
+                // If basket is non-empty, substitute basket contents
+                let actual_packages = if !self.basket.is_empty() {
+                    self.basket.clone()
+                } else {
+                    packages.clone()
+                };
+                self.confirmation_text = format!("Install {} packages?", actual_packages.len());
+                self.pending_action = Some(Action::InstallPackages { packages: actual_packages });
                 tracing::debug!(text = %self.confirmation_text, "showing confirmation dialog");
                 return Ok(Vec::new());
             }
             Action::RemovePackages { packages } => {
-                self.confirmation_text = format!("Remove {} packages?", packages.len());
-                self.pending_action = Some(action.clone());
+                // If basket is non-empty, substitute basket contents
+                let actual_packages = if !self.basket.is_empty() {
+                    self.basket.clone()
+                } else {
+                    packages.clone()
+                };
+                self.confirmation_text = format!("Remove {} packages?", actual_packages.len());
+                self.pending_action = Some(Action::RemovePackages { packages: actual_packages });
                 tracing::debug!(text = %self.confirmation_text, "showing confirmation dialog");
                 return Ok(Vec::new());
             }
@@ -1245,6 +1327,11 @@ impl App {
                 self.confirmation_text = "Upgrade AUR packages?".to_string();
                 self.pending_action = Some(action.clone());
                 tracing::debug!(text = %self.confirmation_text, "showing confirmation dialog");
+                return Ok(Vec::new());
+            }
+            Action::ToggleBasket { name, source } => {
+                self.toggle_basket(name.clone(), source.clone());
+                self.propagate_basket_changed()?;
                 return Ok(Vec::new());
             }
             _ => {}
@@ -1322,7 +1409,7 @@ impl App {
                     Err(e) => tracing::warn!(url, %e, "failed to open URL with xdg-open"),
                 }
             }
-            // Destructive actions are intercepted above, unreachable here
+            // Destructive/basket actions are intercepted above, unreachable here
             Action::InstallPackage { .. }
             | Action::UpdateInstallPackage { .. }
             | Action::RemovePackage { .. }
@@ -1330,7 +1417,8 @@ impl App {
             | Action::RemovePackages { .. }
             | Action::SystemUpgrade
             | Action::RepoUpgrade
-            | Action::AurUpgrade => unreachable!(),
+            | Action::AurUpgrade
+            | Action::ToggleBasket { .. } => unreachable!(),
         };
 
         Ok(events)

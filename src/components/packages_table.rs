@@ -26,7 +26,7 @@ pub(crate) struct PackagesTable {
     all_packages: Vec<Package>,
     theme: Theme,
     active: bool,
-    selected_indices: HashSet<usize>,
+    basket_names: HashSet<String>,
     filter: PackageFilter,
     filter_mode: bool,
     name_filter_mode: bool,
@@ -42,7 +42,7 @@ impl PackagesTable {
             all_packages: Vec::new(),
             theme: Theme::default(),
             active: false,
-            selected_indices: HashSet::new(),
+            basket_names: HashSet::new(),
             filter: PackageFilter::default(),
             filter_mode: false,
             name_filter_mode: false,
@@ -131,34 +131,6 @@ impl PackagesTable {
         }
     }
 
-    fn toggle_selection(&mut self) {
-        if let Some(index) = self.state.selected() {
-            if self.selected_indices.contains(&index) {
-                tracing::debug!(index, "deselecting package");
-                self.selected_indices.remove(&index);
-            } else {
-                tracing::debug!(index, "selecting package");
-                self.selected_indices.insert(index);
-            }
-        }
-    }
-
-    fn clear_selection(&mut self) {
-        if !self.selected_indices.is_empty() {
-            tracing::debug!(count = self.selected_indices.len(), "clearing selection");
-            self.selected_indices.clear();
-        }
-    }
-
-    fn get_selected_packages(&self) -> Vec<(String, String)> {
-        self.selected_indices
-            .iter()
-            .filter_map(|&idx| {
-                self.all_packages.get(idx).map(|p| (p.name.clone(), p.source.clone()))
-            })
-            .collect()
-    }
-
     fn go_to_first(&mut self) {
         let filtered = self.filtered_packages();
         if let Some((first_idx, _)) = filtered.first() {
@@ -215,14 +187,6 @@ impl PackagesTable {
             spans.push(Span::styled(
                 format!(" [/: {}]", self.name_filter_text),
                 Style::default().fg(filter_color),
-            ));
-        }
-
-        // Multi-select count
-        if !self.selected_indices.is_empty() {
-            spans.push(Span::styled(
-                format!(" [{}sel]", self.selected_indices.len()),
-                Style::default().fg(COLOR_SELECTED),
             ));
         }
 
@@ -316,7 +280,6 @@ impl Component for PackagesTable {
                 tracing::debug!("filter mode: cycling install filter");
                 self.filter.install.cycle();
                 self.reset_selection();
-                self.clear_selection();
                 self.filter_mode = false;
                 if let Some(package) = self.get_selected_package() {
                     actions.push(Action::SelectPackage(Box::new(package.clone())));
@@ -329,7 +292,6 @@ impl Component for PackagesTable {
                     SourceFilter::Aur
                 };
                 self.reset_selection();
-                self.clear_selection();
                 self.filter_mode = false;
                 if let Some(package) = self.get_selected_package() {
                     actions.push(Action::SelectPackage(Box::new(package.clone())));
@@ -342,7 +304,6 @@ impl Component for PackagesTable {
                     SourceFilter::Pacman
                 };
                 self.reset_selection();
-                self.clear_selection();
                 self.filter_mode = false;
                 if let Some(package) = self.get_selected_package() {
                     actions.push(Action::SelectPackage(Box::new(package.clone())));
@@ -351,7 +312,6 @@ impl Component for PackagesTable {
                 tracing::debug!("filter mode: clearing all filters");
                 self.filter.clear();
                 self.reset_selection();
-                self.clear_selection();
                 self.filter_mode = false;
                 if let Some(package) = self.get_selected_package() {
                     actions.push(Action::SelectPackage(Box::new(package.clone())));
@@ -409,31 +369,28 @@ impl Component for PackagesTable {
                 });
             }
         } else if config::key_matches(key_event, &self.keys.batch_install) {
-            let selected = self.get_selected_packages();
-            if !selected.is_empty() {
-                tracing::info!(count = selected.len(), "batch install selected packages");
-                actions.push(Action::InstallPackages { packages: selected });
-            } else if let Some(package) = self.get_selected_package() {
-                // Fallback to single update+install when no selection
+            if let Some(package) = self.get_selected_package() {
+                tracing::debug!(name = %package.name, "batch install key pressed");
                 actions.push(Action::UpdateInstallPackage {
                     name: package.name.clone(),
                     source: package.source.clone(),
                 });
             }
         } else if config::key_matches(key_event, &self.keys.batch_remove) {
-            let selected = self.get_selected_packages();
-            if !selected.is_empty() {
-                tracing::info!(count = selected.len(), "batch remove selected packages");
-                actions.push(Action::RemovePackages { packages: selected });
-            } else if let Some(package) = self.get_selected_package() {
-                // Fallback to single remove when no selection
-                actions.push(Action::RemovePackage {
+            if let Some(package) = self.get_selected_package() {
+                tracing::debug!(name = %package.name, "batch remove key pressed");
+                actions.push(Action::RemovePackages {
+                    packages: vec![(package.name.clone(), package.source.clone())],
+                });
+            }
+        } else if config::key_matches(key_event, &self.keys.multi_select) {
+            if let Some(package) = self.get_selected_package() {
+                tracing::debug!(name = %package.name, "toggling basket for package");
+                actions.push(Action::ToggleBasket {
                     name: package.name.clone(),
                     source: package.source.clone(),
                 });
             }
-        } else if config::key_matches(key_event, &self.keys.multi_select) {
-            self.toggle_selection();
         }
 
         Ok(Some(actions))
@@ -444,7 +401,6 @@ impl Component for PackagesTable {
             Event::FoundPackages(packages) => {
                 self.all_packages = packages.clone();
                 self.reset_selection();
-                self.clear_selection(); // Clear selection on new search (indices invalidate)
             }
             Event::AurSearchStarted => {
                 self.aur_loading = true;
@@ -473,7 +429,6 @@ impl Component for PackagesTable {
                         self.all_packages[index].installed = true;
                     }
                 }
-                self.clear_selection();
             }
             Event::PackagesRemoved(names) => {
                 tracing::debug!(count = names.len(), "marking packages as removed");
@@ -482,7 +437,10 @@ impl Component for PackagesTable {
                         self.all_packages[index].installed = false;
                     }
                 }
-                self.clear_selection();
+            }
+            Event::BasketChanged(names) => {
+                tracing::debug!(count = names.len(), "basket changed, updating packages table");
+                self.basket_names = names.clone();
             }
             _ => {}
         }
@@ -515,8 +473,8 @@ impl Component for PackagesTable {
         let filtered = self.filtered_packages();
 
         let mut rows = Vec::new();
-        for (idx, package) in filtered.iter() {
-            let is_selected = self.selected_indices.contains(idx);
+        for (_idx, package) in filtered.iter() {
+            let is_selected = self.basket_names.contains(&package.name);
             let selection_marker = if is_selected {
                 Span::styled("*", Style::default().fg(COLOR_SELECTED))
             } else {

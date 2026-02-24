@@ -15,4 +15,5 @@ pub(crate) enum Action {
     SystemUpgrade,
     RepoUpgrade,
     AurUpgrade,
+    ToggleBasket { name: String, source: String },
 }

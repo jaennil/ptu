@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::pacman::Package;
 
@@ -14,4 +14,5 @@ pub(crate) enum Event {
     PackagesRemoved(Vec<String>),
     OperationFailed { package: String, error: String },
     SystemUpgraded,
+    BasketChanged(HashSet<String>),
 }

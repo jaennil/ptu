@@ -54,7 +54,7 @@ pub(crate) struct InstalledTable {
     state: TableState,
     active: bool,
     theme: Theme,
-    selected_indices: HashSet<usize>,
+    basket_names: HashSet<String>,
     keys: InstalledTableKeys,
     filter_mode: bool,
     filter_text: String,
@@ -73,7 +73,7 @@ impl InstalledTable {
             state: TableState::default(),
             active: false,
             theme: Theme::default(),
-            selected_indices: HashSet::new(),
+            basket_names: HashSet::new(),
             keys,
             filter_mode: false,
             filter_text: String::new(),
@@ -90,7 +90,6 @@ impl InstalledTable {
     pub(crate) fn reload(&mut self, packages: Vec<Package>) {
         tracing::info!(count = packages.len(), "reloading installed table");
         self.packages = packages;
-        self.selected_indices.clear();
         self.resort();
         if !self.sorted_indices.is_empty() {
             self.state.select(Some(0));
@@ -216,27 +215,6 @@ impl InstalledTable {
         }
     }
 
-    fn toggle_selection(&mut self) {
-        if let Some(pkg_idx) = self.selected_package_index() {
-            if self.selected_indices.contains(&pkg_idx) {
-                tracing::debug!(pkg_idx, "deselecting installed package");
-                self.selected_indices.remove(&pkg_idx);
-            } else {
-                tracing::debug!(pkg_idx, "selecting installed package");
-                self.selected_indices.insert(pkg_idx);
-            }
-        }
-    }
-
-    fn get_selected_packages(&self) -> Vec<(String, String)> {
-        self.selected_indices
-            .iter()
-            .filter_map(|&idx| {
-                self.packages.get(idx).map(|p| (p.name.clone(), p.source.clone()))
-            })
-            .collect()
-    }
-
     fn draw_sort_bar(&self, frame: &mut Frame, area: Rect) {
         let arrow = if self.ascending { "↑" } else { "↓" };
         let sort_label = format!("[s:{} {}]", self.sort_column.label(), arrow);
@@ -270,13 +248,6 @@ impl InstalledTable {
             spans.push(Span::styled(
                 format!(" [/: {}]", self.filter_text),
                 Style::default().fg(filter_color),
-            ));
-        }
-
-        if !self.selected_indices.is_empty() {
-            spans.push(Span::styled(
-                format!(" [{}sel]", self.selected_indices.len()),
-                Style::default().fg(Color::Rgb(255, 165, 0)),
             ));
         }
 
@@ -321,7 +292,7 @@ impl InstalledTable {
         let mut rows = Vec::new();
         for (display_idx, &pkg_idx) in self.sorted_indices.iter().enumerate() {
             let package = &self.packages[pkg_idx];
-            let is_selected = self.selected_indices.contains(&pkg_idx);
+            let is_selected = self.basket_names.contains(&package.name);
 
             let marker = if is_selected { "*" } else { " " };
 
@@ -507,18 +478,20 @@ impl Component for InstalledTable {
                 });
             }
         } else if config::key_matches(key_event, &self.keys.batch_remove) {
-            let selected = self.get_selected_packages();
-            if !selected.is_empty() {
-                tracing::info!(count = selected.len(), "batch remove from installed table");
-                actions.push(Action::RemovePackages { packages: selected });
-            } else if let Some(package) = self.get_selected_package() {
-                actions.push(Action::RemovePackage {
+            if let Some(package) = self.get_selected_package() {
+                tracing::debug!(name = %package.name, "batch remove key pressed");
+                actions.push(Action::RemovePackages {
+                    packages: vec![(package.name.clone(), package.source.clone())],
+                });
+            }
+        } else if config::key_matches(key_event, &self.keys.multi_select) {
+            if let Some(package) = self.get_selected_package() {
+                tracing::debug!(name = %package.name, "toggling basket for installed package");
+                actions.push(Action::ToggleBasket {
                     name: package.name.clone(),
                     source: package.source.clone(),
                 });
             }
-        } else if config::key_matches(key_event, &self.keys.multi_select) {
-            self.toggle_selection();
         } else if config::key_matches(key_event, &self.keys.refresh) {
             tracing::info!("refresh installed packages requested");
             actions.push(Action::RefreshInstalled);
@@ -577,14 +550,6 @@ impl Component for InstalledTable {
                 tracing::debug!(name, "removing package from installed table");
                 if let Some(idx) = self.packages.iter().position(|p| p.name == *name) {
                     self.packages.remove(idx);
-                    // Clean up selection references
-                    self.selected_indices.remove(&idx);
-                    // Fix shifted indices in selected_indices
-                    self.selected_indices = self
-                        .selected_indices
-                        .iter()
-                        .map(|&i| if i > idx { i - 1 } else { i })
-                        .collect();
                     self.resort();
                     // Clamp selection
                     if !self.sorted_indices.is_empty() {
@@ -609,7 +574,6 @@ impl Component for InstalledTable {
                 for idx in indices_to_remove {
                     self.packages.remove(idx);
                 }
-                self.selected_indices.clear();
                 self.resort();
                 if !self.sorted_indices.is_empty() {
                     let current = self.state.selected().unwrap_or(0);
@@ -634,6 +598,10 @@ impl Component for InstalledTable {
                 if !self.packages.iter().any(|p| p.name == *name) {
                     tracing::debug!(name, "package installed but not in installed table (would need reload)");
                 }
+            }
+            Event::BasketChanged(names) => {
+                tracing::debug!(count = names.len(), "basket changed, updating installed table");
+                self.basket_names = names.clone();
             }
             _ => {}
         }
